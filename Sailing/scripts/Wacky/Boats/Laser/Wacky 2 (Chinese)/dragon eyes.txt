@@ -1,0 +1,50 @@
+//Dragon Eyes Laser(Wacky) Script
+//By Brian Young/Daijo Zenovka
+//Belongs to primitive 'Dragon Eyes' of Child of Boat
+
+//with references to the Flying Tako Sailboat Script
+
+string Speed_Boost = "Speed_Boost";
+
+string Delimiter = "%$%^";
+
+integer IsWacky = FALSE;
+
+updateParticles(integer SetWacky)
+{
+        
+    if (SetWacky)
+    {
+        //make eyes glow stronger                        
+        llSetAlpha(1,ALL_SIDES); 
+        llSetLinkPrimitiveParams(LINK_THIS, [25, ALL_SIDES, 0.7]);    
+    }
+    else
+    {
+        //make eyes glow
+        llSetAlpha(1,ALL_SIDES); 
+        llSetLinkPrimitiveParams(LINK_THIS, [25, ALL_SIDES, 0.3]); 
+    }   
+}
+
+
+default
+{
+    state_entry()
+    {
+        llParticleSystem([]);
+        updateParticles(IsWacky);
+    }
+    link_message(integer sender_num, integer num, string msg, key id) 
+    {
+            list temp = llParseString2List(msg, [Delimiter], []);   
+            
+            if (llList2String(temp,0) == Speed_Boost)
+            {
+                IsWacky = llList2Integer(temp,1);
+                updateParticles(IsWacky);
+            }
+    }
+    
+   
+}

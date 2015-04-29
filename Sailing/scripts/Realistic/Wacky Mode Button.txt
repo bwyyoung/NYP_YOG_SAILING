@@ -1,0 +1,89 @@
+integer DISPLAY_STRING      = 204000; 
+integer DISPLAY_EXTENDED    = 204001; 
+integer REMAP_INDICES       = 204002; 
+integer RESET_INDICES       = 204003; 
+integer SET_FADE_OPTIONS    = 204004; 
+integer SET_FONT_TEXTURE    = 204005; 
+integer SET_LINE_COLOR      = 204006; 
+integer SET_COLOR           = 204007; 
+integer RESCAN_LINKSET      = 204008;
+
+
+integer Wacky_Channel = -309;
+
+string Enable_Wacky = "Enable_Wacky";
+
+string Delimiter = "%$%^";
+integer point_Activater_handle;
+integer point_Reset_handle;
+integer point_Listener_handle;
+
+integer point_Listener = -300;
+integer point_Activater = -301;
+integer point_Reset = -302;
+integer point_Data = -303;
+
+string Open_Points =  "Open_Points";
+string Activate_Points = "Activate_Points";
+string Reset_Points = "Reset_Points";
+string Test_Points = "Test_Points";
+
+integer Registry = -304;
+
+integer Wacky_Toggle = FALSE;
+integer Active = FALSE;
+default
+{
+    state_entry()
+    {
+        llMessageLinked(LINK_THIS,DISPLAY_STRING,"Wacky Mode","1");
+           point_Activater_handle = llListen(point_Activater, "", NULL_KEY, "");
+           point_Reset_handle = llListen(point_Reset, "", NULL_KEY, "");
+           point_Listener_handle = llListen(point_Listener, "", NULL_KEY, "");
+        llListen(Registry, "", NULL_KEY, ""); 
+    }
+
+    touch_start(integer total_number)
+    {
+        if (llDetectedKey(0)== llGetOwner())
+        {
+            if (!Active)
+            {
+                Wacky_Toggle = !Wacky_Toggle;
+                if (Wacky_Toggle)
+                {
+                    llWhisper(0,"Wacky Mode Enabled");
+                    llMessageLinked(LINK_THIS,DISPLAY_STRING,"Enabled","0");
+                }
+                else
+                {
+                    llWhisper(0,"Wacky Mode Disabled");
+                    llMessageLinked(LINK_THIS,DISPLAY_STRING,"Disabled","0");
+                }
+                    
+                llRegionSay(Wacky_Channel,Enable_Wacky + Delimiter + (string)Wacky_Toggle);
+            }
+            else
+            {
+                llWhisper(0, "Race currently underway. Cannot switch mode.");
+            }
+        }
+    }
+    listen( integer channel, string name, key id, string message )
+    {
+        if (channel == Registry)
+        {
+            list temp = llParseString2List(message, [Delimiter], []);
+            if (llList2String(temp, 0) == Activate_Points)
+            {
+                Active = TRUE;
+            }
+            else if (llList2String(temp, 0) == Reset_Points)
+            {
+                Active = FALSE;
+            }
+            
+        }
+
+    }
+}

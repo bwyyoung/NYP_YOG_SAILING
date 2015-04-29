@@ -1,0 +1,53 @@
+integer DISPLAY_STRING      = 204000; 
+integer DISPLAY_EXTENDED    = 204001; 
+integer REMAP_INDICES       = 204002; 
+integer RESET_INDICES       = 204003; 
+integer SET_FADE_OPTIONS    = 204004; 
+integer SET_FONT_TEXTURE    = 204005; 
+integer SET_LINE_COLOR      = 204006; 
+integer SET_COLOR           = 204007; 
+integer RESCAN_LINKSET      = 204008;
+
+integer NAME_MODULE = 6;
+
+
+string Delimiter = "%$%^";
+string Delimiter2 = "@T!ME";
+
+
+string Set_Display_Boat_Name = "Set_Display_Boat_Name";
+
+integer NumLabels = 2;
+
+default
+{
+    state_entry()
+    {
+        integer i;
+        for (i = 0; i< NumLabels; i++)
+        {
+            llMessageLinked(LINK_THIS,DISPLAY_STRING,"",(string)i);
+        }
+    }
+
+    link_message(integer from,integer to,string str,key id) 
+    {
+        if (to==NAME_MODULE) 
+        {
+            integer i;
+            list temp = llParseString2List(str, [Delimiter], []);
+            
+            if (llList2String(temp,0) == Set_Display_Boat_Name)
+            {
+                list temp2 = llParseString2List(llList2String(temp,1), [Delimiter2], []);
+                
+                for (i = 0; i< NumLabels; i++)
+                {
+                    llMessageLinked(LINK_THIS,DISPLAY_STRING,llList2String(temp2,i),(string)i);
+                }
+            }
+            
+            
+        }
+    }
+}

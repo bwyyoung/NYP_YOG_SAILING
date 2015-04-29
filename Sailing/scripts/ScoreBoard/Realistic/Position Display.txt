@@ -1,0 +1,118 @@
+//psoition display Script
+//By Brian Young/Daijo Zenovka
+//this script is located in the root prim of position display
+
+//This script receives linked messages from Name & Time Display original script, which contains information about data to display. This script is in a separate linked set because with too many links, the returns for text rendering will diminish. The data here is position and column category names.
+
+integer DISPLAY_STRING      = 204000; 
+integer DISPLAY_EXTENDED    = 204001; 
+integer REMAP_INDICES       = 204002; 
+integer RESET_INDICES       = 204003; 
+integer SET_FADE_OPTIONS    = 204004; 
+integer SET_FONT_TEXTURE    = 204005; 
+integer SET_LINE_COLOR      = 204006; 
+integer SET_COLOR           = 204007; 
+integer RESCAN_LINKSET      = 204008;
+ 
+ 
+integer Sailing_Scoreboard_Realistic = -307; 
+integer Sailing_Scoreboard_Wacky = -308; 
+
+string Set_Index = "Set_Index";
+string Set_Ratio = "Set_Ratio";
+string Set_Label = "Set_Label";
+
+string Delimiter = "%$%^";
+
+integer MaxNumDisplay = 10;
+
+integer Label_Index = 16;
+integer Ratio_Index = 11;
+integer Label_Num = 5;
+
+
+ClearDisplay()
+{
+    integer i;
+    for (i = 1; i<= MaxNumDisplay; i++)
+    {
+        llMessageLinked(LINK_THIS,DISPLAY_STRING,"",(string)i);
+    }
+}
+default
+{
+    state_entry()
+    {
+        llListen(0,"",NULL_KEY,"");
+        llMessageLinked(LINK_THIS,DISPLAY_STRING,"Position","0");
+        integer theIndex = 1;
+        integer i;
+        integer j=1;
+
+        llMessageLinked(LINK_THIS,DISPLAY_STRING,"Sailing Scoreboard (Realistic)","21");
+        llMessageLinked(LINK_THIS,DISPLAY_STRING,"Name","22");
+        llListen(Sailing_Scoreboard_Realistic,"",NULL_KEY,"");
+        
+        
+                   for (i = Label_Index; i <= Label_Index + Label_Num; i++)
+            {
+                //llMessageLinked(LINK_THIS,DISPLAY_STRING,"dick",(string)i);   
+                j++;
+            } 
+                        for (i = Ratio_Index; i <Ratio_Index + Label_Num; i++)
+            {
+              //  llMessageLinked(LINK_THIS,DISPLAY_STRING,"man",(string)i);   
+                j++;
+            }
+            for (i = 1; i< 21; i++)
+            {
+                llMessageLinked(LINK_THIS,DISPLAY_STRING,"",(string)i); 
+            }
+    }
+    listen(integer channel,string name, key id, string message)
+    {
+        list temp = llParseString2List(message, [Delimiter], []);
+
+        if (llList2String(temp,0) == Set_Index)
+        {
+            ClearDisplay();
+            integer EndIndexNum = llList2Integer(temp,2);
+            integer theIndex = llList2Integer(temp,1);
+            integer i;
+            integer j=1;
+            for (i = theIndex; i< theIndex+EndIndexNum; i++)
+            {
+                llMessageLinked(LINK_THIS,DISPLAY_STRING,"  " + (string)i,(string)j);
+                j++;
+            }
+        } 
+        else if  (llList2String(temp,0) == Set_Ratio)
+        {
+            string RatioName = llList2String(temp,1);
+            integer i;
+            integer j = 1;
+            for (i = Ratio_Index; i < Ratio_Index + Label_Num; i++)
+            {
+                llMessageLinked(LINK_THIS,DISPLAY_STRING,llList2String(temp,j),(string)i);   
+                j++;
+            }
+            
+        }
+        else if  (llList2String(temp,0) == Set_Label)
+        {
+            integer i;
+            integer j = 1;
+            for (i = Label_Index; i < Label_Index + Label_Num; i++)
+            {
+                llMessageLinked(LINK_THIS,DISPLAY_STRING,llList2String(temp,j),(string)i);   
+                j++;
+            } 
+
+        }
+        
+        
+    }
+  
+}
+ 
+  

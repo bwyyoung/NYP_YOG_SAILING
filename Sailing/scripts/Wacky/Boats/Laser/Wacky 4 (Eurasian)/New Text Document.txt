@@ -1,0 +1,101 @@
+//Lion Base Fire Laser(Wacky) Script
+//By Brian Young/Daijo Zenovka
+//Belongs to primitive 'FireBreath cannon base' of child of Boat
+
+float SPEED         = 30;         //  Speed of arrow in meters/sec
+integer LIFETIME    = 7;            //  How many seconds will bullets live 
+                                    //  before deleting themselves
+float DELAY         = 0.2;          //  Delay between shots to impose 
+
+vector vel;                         //  Used to store velocity of arrow to be shot 
+vector pos;                         //  Used to store position of arrow to be shot
+rotation rot;                       //  Used to store rotation of arrow to be shot
+
+
+// Script variables
+integer pre = 2;          //Adjust the precision of the generated list.
+
+integer flags;
+list sys;
+integer type;
+vector tempVector;
+rotation tempRot;
+string tempString;
+integer i;
+
+
+
+string projName =  "cannonball";
+string Speed_Boost = "Speed_Boost";
+
+string Delimiter = "%$%^";
+
+integer safety = FALSE;
+
+integer IsWacky = TRUE;
+
+string float2String(float in)
+{
+    return llGetSubString((string)in,0,pre - 7);
+}
+
+updateParticles(integer SetWacky)
+{
+
+    
+    if (SetWacky)
+    {
+        rot = llGetRot();               //  Get current avatar mouselook direction
+        vel = llRot2Up(rot);           //  Convert rotation to a direction vector
+        pos = llGetPos();               //  Get position of avatar to create arrow
+        pos = pos + vel;                //  Create arrow slightly in direction of travel
+       // pos.z += 0.75;                  //  Correct creation point upward to eye point 
+                                        //  from hips,  so that in mouselook we see arrow 
+                                        //  travelling away from the camera. 
+        vel = vel * SPEED;              //  Multiply normalized vector by speed 
+        
+        llRezObject(projName, pos, vel, rot, LIFETIME); 
+                                            //  Create the actual arrow from object 
+                                            //  inventory, and set its position, velocity, 
+                                            //  and rotation.  Pass a parameter to it to 
+                                            //  tell it how long to live.
+
+        safety = TRUE;
+    }
+    else
+    {
+        llSetAlpha(0,ALL_SIDES); 
+        llParticleSystem([]);    
+        llSetLinkPrimitiveParams(LINK_THIS, [25, ALL_SIDES, 0]);                
+                      
+    }   
+    // --> turn off
+}
+
+default
+{
+    state_entry()
+    {
+        
+        updateParticles(IsWacky);
+    }
+    link_message(integer sender_num, integer num, string msg, key id) 
+    {
+            list temp = llParseString2List(msg, [Delimiter], []);   
+            
+            if (llList2String(temp,0) == Speed_Boost)
+            {
+                integer IsWacky = llList2Integer(temp,1);
+                
+                if (!safety)
+                    updateParticles(IsWacky);
+            }
+    }
+    timer()
+    {
+        safety = FALSE;
+        llSetTimerEvent(0);   
+        
+    }
+ 
+}

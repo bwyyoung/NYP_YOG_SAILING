@@ -1,0 +1,158 @@
+//Movement Laser(Wacky) Script
+//By Brian Young/Daijo Zenovka
+//Belongs to primitive 'Laser Wacky 1' of Root of Boat
+
+//with references to the Flying Tako Sailboat Script
+
+//This script controls movement of the boat in terms of speed and velocity. It also toggles Speed Boost and Sliding.
+
+string Enable_Wacky = "Enable_Wacky";
+string Delimiter = "%$%^";
+
+string Speed_Boost = "Speed_Boost";
+string Toggle_Control = "Toggle_Control";
+
+string Boat_Slip = "Boat_Slip";
+
+integer CONTROLS_MODULE=1;
+
+list dataList;
+
+//Wacky variables
+integer BoostTime = 0;
+float BoostValue = 0;
+
+integer Boat_Channel = -306;
+
+key avatar;
+
+//linear motion variables
+float currSpeed;
+vector groundSpeed=ZERO_VECTOR;
+float spdFactor=0.0;
+float leeway;
+
+float maxSpeedMotor=10.0;
+
+default
+{
+    state_entry()
+    {
+        llSetTimerEvent(0);
+        BoostTime =0;
+        BoostValue = 0;
+        currSpeed = 0;
+        
+    }
+    listen(integer channel, string name, key id, string msg) 
+    {
+        if (channel == Boat_Channel)
+        {
+            list temp = llParseString2List(msg, [Delimiter], []);
+            if (llList2String(temp,0) == Speed_Boost)
+            {
+                string name = llList2String(temp,1);
+                if (name == llGetObjectName())
+                {
+                    //we have a speed boost call
+                    
+                    integer IsBoost =  llList2Integer(temp,2);
+                    
+                    if (IsBoost)
+                    {//set a speed boost for a limited time
+                        BoostTime = llList2Integer(temp,3);
+                        BoostValue = llList2Float(temp,4);
+                        llSetTimerEvent(1.0);
+                        
+                    }
+                    else
+                    {//turn off boost
+                        llSetTimerEvent(0);
+                        BoostTime =0;
+                        BoostValue = 0;
+                    }
+                    
+                    llMessageLinked(LINK_ALL_OTHERS,0,Speed_Boost + Delimiter + (string)IsBoost,NULL_KEY);
+                }
+                   
+            } 
+            else if (llList2String(temp,0) == Boat_Slip)
+            {
+                string name = llList2String(temp,1);
+                if (name == llGetObjectName())
+                {
+                    //we have a boat slip call
+                    
+                    integer IsSlip =  llList2Integer(temp,2);
+                    
+                    if (IsSlip)
+                    {//we have a high boost value hoping to get out of the slip spin
+                        BoostValue = 10;
+                    }
+
+                }
+                   
+            }  
+        }
+    }
+    control(key id, integer held, integer change) 
+    {
+
+    }    
+    changed(integer change) 
+    {
+        
+        avatar=llAvatarOnSitTarget();
+        if (change & CHANGED_LINK) 
+        {
+            if (avatar==NULL_KEY) //if avatar stands up from boat
+            {
+                llResetScript();
+            }
+            else
+            {
+                llListen(Boat_Channel,"",NULL_KEY,""); 
+            }
+        }
+        
+    }       
+    timer()
+    {
+        BoostTime--;//slowly lower the boost value 
+        
+        if (BoostTime <= 0)
+        {//turn off boost
+            BoostValue = 0;
+            BoostTime = 0;
+            integer IsBoost = FALSE;
+            
+            llMessageLinked(LINK_ALL_OTHERS,0,Speed_Boost + Delimiter + (string)IsBoost,NULL_KEY);
+            llSetTimerEvent(0);
+        }
+        
+    }
+    link_message(integer from,integer to,string str,key id) 
+    {
+        
+        if (to==CONTROLS_MODULE) 
+        {
+            dataList=llCSV2List(str);
+            currSpeed=llList2Float(dataList,0)+BoostValue;
+            leeway=llList2Float(dataList,1);
+            //set boat speed params
+            llSetVehicleVectorParam(VEHICLE_LINEAR_MOTOR_DIRECTION,<currSpeed,leeway,0>);
+        }
+        else
+        {
+            list temp = llParseString2List(str, [Delimiter], []);
+            if (llList2String(temp,0) == Toggle_Control)
+            {//when regaining control, turn the boost value to 0
+                integer Control = llList2Integer(temp,1);
+                if (Control)
+                    BoostValue = 0;
+            }
+
+            
+        }
+    }
+}

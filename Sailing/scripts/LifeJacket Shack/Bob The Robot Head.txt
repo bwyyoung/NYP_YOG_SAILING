@@ -1,0 +1,301 @@
+//Robot Head Script
+//Written by Brian Young/ Daijo Zenovka
+// Goes in Bob the Robot's Head.
+
+
+//Bob is a robot that explains to the player that it is necessary to wear a lifejacket. He checks if the player is currently wearing one, and will ask the player to wear one if he is not. If the player is wearing a lifejacket, he thanks the player.
+
+
+integer DetectRate = 2;
+float DetectRange = 10.0;
+rotation DefaultRot;
+
+integer Active = FALSE;
+
+integer SoundEnabled = TRUE;
+
+integer JacketWearCheck = FALSE;
+
+string IsSound = "(Sound Enabled)";
+string Name = "Bob the Robot";
+
+string Attached_Avatar = "Attached_Avatar";
+string taken_jacket = "taken_jacket";
+string Delimiter = "%$%^";
+
+integer CurrentEE = 0;
+integer MaxEE = 4;
+string EEName = "EE";
+list EEDesc = ["Please do not touch me. I am not a repair droid from Star Wars!",
+                "Don't get technical with me!",
+                "Sir if you'll not be needing me i'll close down for a while.",
+                "All systems have been alerted to your presence sir!"];
+
+integer lifejacket_shack_channel = -312;
+integer Olympic_Bracelet = -305;
+
+key index = NULL_KEY;
+
+list TakenJacket = [];
+list NewComers = [];
+
+
+list Sensed = [];
+list Talked = [];
+
+
+LookAt(key theID)
+{
+    list thePos = llGetObjectDetails(theID, [OBJECT_POS]);
+    vector CurrentPos = llGetPos();
+    vector Displace = llList2Vector(thePos,0) - CurrentPos;
+
+    float Angle = llAtan2(Displace.y,Displace.x);
+    if (Angle < 0.0) 
+            Angle += TWO_PI;
+        
+    rotation theRot = llEuler2Rot(<0.0,0.0,Angle>);
+        
+    llSetRot(theRot); 
+    
+    
+}
+
+default
+{
+    state_entry()
+    {
+        DefaultRot = llGetRot();
+        
+        if (SoundEnabled)
+            llSetObjectName(Name + IsSound);
+        else
+           llSetObjectName(Name); 
+            
+        llListen(lifejacket_shack_channel, "", NULL_KEY, "");
+        llListen(Olympic_Bracelet, "", NULL_KEY, "");
+    }
+    listen( integer channel, string name, key id, string message )
+    {
+        if (Active)
+        {
+            if (channel == lifejacket_shack_channel)
+            {
+                list temp = llParseString2List(message, [Delimiter], []);
+                
+                if (llList2String(temp,0) == taken_jacket)
+                {
+                    LookAt(llList2Key(temp,1));
+                    TakenJacket += llList2Key(temp,1);
+                    llPlaySound("Thank you",1.0); 
+                    llSay(0,"Thank You.");
+                    llSleep(2.0);
+                }
+            }
+            else if (channel ==Olympic_Bracelet)
+            {
+                list temp = llParseString2List(message, [Delimiter], []);
+                if (llList2String(temp,0) == Attached_Avatar)
+                {
+                    if (index == llList2String(temp,2))
+                    {
+                        Talked += index;
+                        index = NULL_KEY;
+                        llPlaySound("Thank you wearing", 1.0);
+                        llSay(0, "Thank you for wearing your lifejacket.");
+                        llSleep(4.0);
+                        JacketWearCheck = FALSE;
+                        if (llListFindList( TakenJacket , [llList2Key(temp,2)]) == -1)
+                        {
+                            TakenJacket += llList2Key(temp,2);
+                            //check for player distance
+                            if (llListFindList( NewComers , [llList2Key(temp,2)]) == -1)
+                                NewComers+=llList2Key(temp,2);
+
+                        }
+                    }
+                    else
+                    {
+                        //check for distance
+                        
+                        vector ThePos = llList2Vector(llGetObjectDetails(llList2Key(temp,2), [OBJECT_POS]),0);
+                        
+                        if(llVecMag((vector)(ThePos - llGetPos())) <= DetectRange)
+                        {
+                            llPlaySound("Thank you wearing", 1.0);
+                            llSay(0, "Thank you for wearing your lifejacket.");
+                            llSleep(4.0);
+                            JacketWearCheck = FALSE;
+                            Talked += llList2Key(temp,2);
+    
+                        }
+                        
+                        
+
+                        if (llListFindList( TakenJacket , [llList2Key(temp,2)]) == -1)
+                        {
+                            TakenJacket += llList2Key(temp,2);
+                            //check for player distance
+                            if (llListFindList( NewComers , [llList2Key(temp,2)]) == -1)
+                                NewComers+=llList2Key(temp,2); 
+                        }
+                    }
+                }
+    
+            }
+        }
+        
+    }
+    timer()
+    {
+        llSensor("", NULL_KEY, AGENT,DetectRange,PI/3);   
+        
+    }
+    sensor(integer num)
+    {
+        integer isSensed = FALSE;
+        integer isTalked = FALSE;
+        
+        LookAt(llDetectedKey(0));
+        
+        if (~llListFindList(Sensed, [llDetectedKey(0)]))
+        {
+            isSensed = TRUE;
+            
+        }
+        else
+        {
+            Sensed+=llDetectedKey(0);   
+            
+        }
+
+        
+        if (~llListFindList(TakenJacket, [llDetectedKey(0)]))
+        {
+            if (llListFindList(Talked, [llDetectedKey(0)]) == -1)//when saying thank you
+            {
+                index = llDetectedKey(0);
+
+                
+                if (!JacketWearCheck)
+                {
+                    JacketWearCheck =  TRUE;
+                    llRegionSay(Olympic_Bracelet, Attached_Avatar + Delimiter + (string)llKey2Name(llDetectedKey(0)));
+                    
+                }
+                else 
+                {
+
+                        JacketWearCheck = FALSE;
+                        llPlaySound("Please",1.0);  
+                        llSay(0, "Please wear your Lifejacket."); 
+                        llSleep(3.0);
+                        Talked += llDetectedKey(0);
+                }
+            }
+            
+        }
+        else
+        {
+            if (!JacketWearCheck)
+            {
+                JacketWearCheck =  TRUE;
+                llRegionSay(Olympic_Bracelet, Attached_Avatar + Delimiter + (string)llKey2Name(llDetectedKey(0)));
+            }
+            else 
+            {
+                if (~llListFindList(NewComers, [llDetectedKey(0)]))
+                {
+                    if (!isSensed)
+                    {
+                        llPlaySound("Please",1.0);  
+                        llSay(0, "Please wear your Lifejacket."); 
+                        llSleep(3.0);
+                         JacketWearCheck = FALSE;
+                    }
+                    else
+                    {
+                        if (llListFindList(Talked, [llDetectedKey(0)]) == -1)
+                        {
+                            Talked+=llDetectedKey(0);   
+                            llPlaySound("Please touch",1.0); 
+                            llSay(0, "Please touch a lifejacket in front of me in order to take one of the same colour.");                           
+                            llPreloadSound("EE 0");
+                            llPreloadSound("EE 1");
+                            llPreloadSound("EE 2");
+                            llPreloadSound("EE 3");
+                        }   
+                        
+                    }
+                }
+                else
+                {
+                    NewComers+=llDetectedKey(0);
+
+                    llPlaySound("Welcome",1.0);  
+                    llSay(0, "Welcome to YOG Sailing. Please take a Lifejacket.");
+                    llPreloadSound("Please");
+                    llPreloadSound("Please touch");
+                    llPreloadSound("Thank you");
+                    llPreloadSound("Thank you wearing");
+                    llSleep(0.5);
+
+    
+                }
+            }
+        }
+
+    }
+    touch_start(integer num)
+    {
+        if (llDetectedKey(0) == llGetOwner())
+        {
+            Active = ! Active;
+            
+            if (Active)
+            {
+                llSetTimerEvent(DetectRate);
+                llOwnerSay("Bot Activated.");
+            }
+            else
+            {
+                llSetTimerEvent(0);
+                llSetRot(DefaultRot);
+                TakenJacket = [];
+                NewComers = [];
+                Sensed = [];
+                Talked = [];
+                JacketWearCheck = FALSE;
+                llOwnerSay("Bot Deactivated.");
+            }
+            
+            
+        }
+        else
+        {
+            if (Active)
+            {
+                llPlaySound(EEName + " " + (string)CurrentEE, 1.0);
+                llSay(0,llList2String(EEDesc, CurrentEE));
+                
+                CurrentEE++;
+                
+                if (CurrentEE >= MaxEE)
+                    CurrentEE = 0;  
+                
+            }
+
+        }
+        
+    }
+    no_sensor()
+    {
+        llSetRot(DefaultRot);
+        Sensed = [];
+        Talked = [];
+        index = NULL_KEY;
+        CurrentEE = 0;
+        JacketWearCheck = FALSE;
+    }
+}
+ 

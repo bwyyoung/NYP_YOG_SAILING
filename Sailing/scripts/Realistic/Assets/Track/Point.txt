@@ -1,0 +1,68 @@
+//Point Script 
+//By Brian Young/Daijo Zenovka
+//Goes in root prim of Point
+
+//This script holds information about the point number, and responds when the boat tracker wants to know how many points are available prior to a race. When a boat collides with it, it sends a message to the boat tracker informing it about the collision.
+
+integer point_Activater_handle;
+integer point_Reset_handle;
+integer point_Listener_handle;
+
+integer point_Listener = -300;
+integer point_Activater = -301;
+integer point_Reset = -302;
+integer point_Data = -303;
+
+string Open_Points =  "Open_Points";
+string Activate_Points = "Activate_Points";
+string Reset_Points = "Reset_Points";
+string Test_Points = "Test_Points";
+
+string Point_Collide = "Point_Collide";
+
+string Delimiter = "%$%^";
+Start_Race()
+{
+
+           llVolumeDetect(FALSE);
+}
+Reset_Race()
+{   
+    llVolumeDetect(FALSE);
+}
+
+default
+{
+    state_entry()
+    {
+       point_Activater_handle = llListen(point_Activater, "", NULL_KEY, "");
+       point_Reset_handle = llListen(point_Reset, "", NULL_KEY, "");
+       point_Listener_handle = llListen(point_Listener, "", NULL_KEY, "");
+       llVolumeDetect(FALSE);
+    }
+
+    collision_start(integer num)
+    {
+        llRegionSay(point_Listener,Point_Collide + Delimiter +llGetObjectName() + Delimiter + (string)llDetectedName(0));
+    } 
+    
+    listen( integer channel, string name, key id, string message )
+    {
+        if (message == Activate_Points)
+        {
+            Start_Race();
+        }
+        else if (message ==  Open_Points)
+        {
+            llVolumeDetect(TRUE);
+        }
+        else if (message == Reset_Points)
+        {
+            Reset_Race();
+        }
+        else if (message == Test_Points)
+        {
+            llRegionSay(point_Listener,Test_Points+" " + llGetObjectName());
+        }
+    }
+}

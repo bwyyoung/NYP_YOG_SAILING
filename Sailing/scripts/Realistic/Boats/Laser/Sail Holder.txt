@@ -1,0 +1,140 @@
+
+//SailHolder Laser(Realistic) Script
+//By Brian Young/Daijo Zenovka
+//Belongs to primitive 'sailholder' of Child of Boat
+
+//It rotates the cylinder beneath the sail on a sailboat. It is located in the sailholder primitive.
+
+//script module flags
+integer CONTROLS_MODULE=1;
+integer SAIL_MODULE=2;
+integer MOTOR_MODULE=3;
+integer COLORIZER_MODULE=4;
+
+integer SAIL_UP=FALSE;
+
+//linked parts
+integer BOW;
+integer HULL;
+integer STERN;
+integer SAIL;
+integer WINDVANE;
+integer SAILHOLDER;
+integer PORTBENCH;
+integer STARBOARDBENCH;
+integer RUDDER;
+integer TILLER;
+integer CENTERBOARD;
+integer FLOOR;
+integer MAST;
+integer TRANSOM;
+integer REARFLOOR;
+integer HUD;
+integer NUMBER1;
+integer NUMBER2;
+integer PROP;
+
+rotation initRot;
+
+
+//automatically detect link nums for each named part
+getLinkNums() {
+    integer i;
+    integer linkcount=llGetNumberOfPrims();  
+    for (i=1;i<=linkcount;++i) {
+        string str=llGetLinkName(i);
+        if (str=="bow") BOW=i;
+        if (str=="hull") HULL=i;
+        if (str=="stern") STERN=i;
+        if (str=="sail") SAIL=i;
+        if (str=="mast") MAST=i;
+        if (str=="windindicator") WINDVANE=i;
+        if (str=="floor") FLOOR=i;
+        if (str=="transom") TRANSOM=i;
+        if (str=="tiller") TILLER=i;
+        if (str=="rudder") RUDDER=i;
+        if (str=="centerboard") CENTERBOARD=i;
+        if (str=="starboardbench") STARBOARDBENCH=i;
+        if (str=="portbench") PORTBENCH=i;
+        if (str=="rearfloor") REARFLOOR=i;
+        if (str=="hud") HUD=i;
+        if (str=="number1") NUMBER1=i;
+        if (str=="number2") NUMBER2=i;
+        if (str=="prop") PROP=i;  
+        if (str=="sailholder") SAILHOLDER = i;        
+    }
+}
+
+//raise sail: start timer
+raiseSail() 
+{      
+    SAIL_UP=TRUE;
+    
+} 
+
+//lower sail but leave physics on
+lowerSail() 
+{
+    SAIL_UP=FALSE; 
+    llSetLocalRot(initRot);
+}
+
+//reset sail holder to initial position
+reset() 
+{
+    llSetLocalRot(initRot);    
+}
+
+default {
+    
+    state_entry() {
+    
+        getLinkNums();
+        
+        llSetObjectName("sailholder");
+        initRot=llEuler2Rot(<0,PI_BY_TWO,0>);
+        llSetLocalRot(initRot);
+
+    }
+    
+    on_rez(integer param) {
+        llAllowInventoryDrop(TRUE);
+    }
+    
+
+    link_message(integer from,integer to,string msg,key id) {
+        if (from==LINK_ROOT && to==SAIL_MODULE) 
+        {
+            if (msg=="reset") {//reset
+                lowerSail();
+                reset();
+                llResetScript();
+            }
+            else if (msg=="lower") {//lower without reset
+                lowerSail();
+            }
+             else if (msg=="raise")  {//raise sail
+                raiseSail();
+            }
+        }   
+        else if (from == SAIL&& to==SAIL_MODULE)
+        {
+            // set the sail holder's rotation here
+           list temp = llParseString2List(msg, [" "], []);
+           rotation a;
+           
+           a.x = llList2Float(temp,0);
+           a.y = llList2Float(temp,1);
+           a.z = llList2Float(temp,2);
+           a.s = llList2Float(temp,3);
+           llSetLocalRot(a);
+            
+        }
+    }
+    
+    changed(integer change)
+    {
+        
+    }
+
+}

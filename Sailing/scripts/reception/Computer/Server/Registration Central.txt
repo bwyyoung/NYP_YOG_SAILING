@@ -1,0 +1,469 @@
+//Registration Central Script
+//Written by Brian Young/ Daijo Zenovka
+//Located in server root
+
+
+list name_list;
+
+integer Registration_Channel = -313;
+
+
+
+float delay = 3.0;
+integer stop_counter = 0;
+string received_name = "";
+string received_points = "";
+
+
+
+integer channelFencing;         //channel for communicating with fencing registry, ATM & shop
+
+/////////////////////////////////////////
+//Author : Derek Toh
+/////////////////////////////////////////
+
+//use strided list for < name , points >
+//read up lsl wiki on how to do it
+
+//Potential Problems That We may Encounter
+// - Current revision of this script allows only 1 other sub board to
+//   communicate. Problems may occur if there are 2 or more other
+//   sub board. -- Tested With 3 person spammnig 2 boards. -- no problems so far (11th Sep 2008, 10.09am)
+
+//Use negative channel for communication between boards
+
+/////////////////////////////////////////////////////
+//-Channel-//-To Board-///////////
+//- -100  -//-Point Checker///////
+//////////////////////////////////
+
+//regionsay msgs
+
+string Add_Point_User = "Add_Point_User"; // this is to add a new user to the computers
+string Update_Point_User = "Update_Point_User";
+string Update_Point_User_String = "Update_Point_User_String";
+
+string Set_Points = "Set_Points"; // the coms update reg central with a new score
+
+string Update_YOG_Points = "Update_YOG_Points";
+
+
+
+//linked message msgs
+string Show_Points = "Show_Points";
+string Add_User = "Add_User"; // gets new user with email from email bank
+
+string Delimiter = "%$";
+string Delimiter2 = "%$%^";
+
+integer DEBUG = TRUE;
+
+integer REG_MODULE = 0;
+
+
+integer Sailing_YOG_Points = -314;
+
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////      REGISTRATION FUNCTIONS 
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+list ListStridedUpdate(list dest, list src, integer start, integer end, integer stride) //This function is taken from the second life wiki
+{
+    return llListReplaceList(dest, src, start * stride, ((end + 1) * stride) - 1 );
+}
+
+integer update_list(string name, string point)
+{
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    //This Whole "Function" is to update points where new points are added into the current points that the avatar has
+    //This is temporary placed here.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            
+    integer temp = llListFindList(name_list, [name]); //First, Find the location of the avatar on the list
+    list temp_list = llList2List(name_list, temp - 1, temp - 1);    //Second, -1 from the location of the name of avatar to get the points value
+                                                                    //since that the format is <points, name>.    
+    integer current_points = (integer)llDumpList2String(temp_list, ",");//convert the value of points from string to integer. Doing it this way
+                                                                        //is because I do not know of any other way    
+    integer final_new_points = current_points + (integer)point; // Add the current points and new points together.
+    
+    name_list = ListStridedUpdate   (   name_list,  //The list for the replacement of value
+                                        [final_new_points],//Replace the old points with the new updated points.
+                                        (llListFindList(name_list, [name])) - 1,//starting position of list to replace with
+                                        (llListFindList(name_list, [name])) - 1, //ending position of list to replace with
+                                        1 // Since I'm using <points, name>, 1 would be enough. It seems redundant but use it just in case first.
+                                    );
+    
+    return 0;
+}
+
+//++++++++++++++++++ ADDED BY ABDUL SYARIZMAN AKA MAN CAPALINI +++++++++++++++++++++++++++++++//
+////////////////////////////////////////////////////////////////////////////////////////////////
+//function for getting the right string of two or more strings in a message with dividers (eg. message == string1#string2 --> string2 == getRightString(message, "#"))
+string getRightString(string value, string divider) 
+{
+    integer index = llSubStringIndex( value, divider );
+    if(~index)
+        return llDeleteSubString( value, 0, index + llStringLength(divider) - llStringLength(divider));
+    return value;
+    
+}
+
+//function for getting the left string of two or more strings in a message with dividers (eg. message == string1#string2 --> string1 == getLeftString(message, "#"))
+string getLeftString(string value, string divider) 
+{
+    integer index = llSubStringIndex( value, divider );
+    if(~index)
+        return llDeleteSubString( value, index + llStringLength(divider) - llStringLength(divider), -1);
+    return value;
+    
+}
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////      END OF REGISTRATION FUNCTIONS 
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////      EMAIL FUNCTIONS 
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+integer GetCurrentPoints(string TheAvatar)
+{
+    //Show the player how much points that the player currently have
+    integer temp = llListFindList(name_list, [TheAvatar]);                   //First, Find the location of the avatar on the list
+    list temp_list = llList2List(name_list, temp - 1, temp - 1);        //Second, -1 from the location of the avatar name to get the point value
+                                                                                    //since that the foramt is <points, name>.  
+                                                                                      
+    integer current_points = (integer)llDumpList2String(temp_list, ",");//convert the value of points from string to integer. Doing it this way
+                                                                                    //is because I do not know of any other way 
+    return current_points;
+}
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////      END OF EMAIL FUNCTIONS 
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+default
+{
+    state_entry()
+    {
+        //***********************Registration Entry Values***********************
+        llSetTimerEvent(delay); //Delay between each call to update the function
+        
+        channelFencing = -102;
+        
+        //Sub Board 1
+        llListen(-100, "Sub Board 1", "", ""); //Listen data from the object "Sub Board 1" with the stated key
+
+        //Sub Board 2 //Edited by clarence lim to listen from other system of BMX too (SubBoard2,PointSystem,Shop).
+        llListen(-101, "", "", ""); //Listen data from the object "Sub Board 1" with the stated key
+    
+        //listen for fencing registry, ATM and Shop
+        llListen(channelFencing, "Fencing Registry", "", ""); 
+        llListen(channelFencing, "Fencing ATM", "", ""); 
+        llListen(channelFencing, "Fencing Shop", "", ""); 
+        
+        llListen(Sailing_YOG_Points,"",NULL_KEY, ""); 
+        //***********************Email Entry Values***********************
+        llListen(Registration_Channel,"",NULL_KEY,"");
+        
+        
+    }
+    link_message(integer sender_num, integer num, string message, key id) 
+    {
+        if (num == REG_MODULE)
+        {
+            list temp = llParseString2List(message, [Delimiter], []); //check with space separations
+            
+            if (llList2String(temp, 0) == Show_Points)
+            {
+                key id = llList2Key(temp, 1);
+                
+                if (~llListFindList(name_list, [llKey2Name(id)]))// if the avatar is already registered, do the following
+                {
+                    integer current_points = GetCurrentPoints(llKey2Name(id));    
+                     
+                    llInstantMessage(id, llKey2Name(id) + ", You currently have " + (string)current_points + " points."); //Instant Message is used so as to
+                                                                                                               //not spam the main channel with messages
+                }
+                else
+                {
+                    llOwnerSay("ERROR: NO SUCH NAME IN DATABASE ~ Show_Points");    
+                }
+            }
+            else if (llList2String(temp, 0) == Add_User)
+            {
+                key id = llList2Key(temp, 1);
+                if (!~llListFindList(name_list, [llKey2Name(id)]))
+                {
+                    name_list = name_list + ["0"] + [llKey2Name(id)]; //Add Avatar into the register list and give it a initial point value of 0 
+                    llRegionSay(Registration_Channel, Add_Point_User + Delimiter + (string)id);
+                }
+                else
+                {
+                    llOwnerSay("ERROR: NAME ALREADY EXISTS IN DATABASE ~ Add_User"); 
+                }
+
+            }
+        }
+            if (DEBUG)
+            {
+                //llOwnerSay("Emails: " + llDumpList2String(email_list, " , "));
+                llOwnerSay("Points: " + llDumpList2String(name_list, " , "));// print out whole list
+            }
+        
+    }
+    touch_start(integer num)
+    {
+        if(llDetectedKey(0) == llGetOwner())
+            llResetScript();   
+        
+    }
+    listen(integer channel, string name, key id, string message) 
+    {
+        
+        ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+        //////      EMAIL FUNCTIONS 
+        ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+        
+        if (channel == Registration_Channel)
+        {
+            list temp = llParseString2List(message, [Delimiter], []); //check with space separations
+            
+            if  (llList2String(temp, 0) == Set_Points )
+            {
+                key id = llList2Key(temp, 1);
+                integer NewPoints = llList2Integer(temp,2);
+                integer TheComChannel = llList2Integer(temp,3);
+                if (~llListFindList(name_list, [llKey2Name(id)]))// if the avatar is already registered, do the following
+                {
+                    update_list(llKey2Name(id),(string)NewPoints); //coms update the reg central scores
+                    
+                    llRegionSay(Registration_Channel,Update_Point_User + Delimiter + (string)llList2Key(temp, 1)+ Delimiter + (string)llList2Integer(temp,2) + Delimiter + (string)TheComChannel);//tell other coms of new score
+                }
+                else
+                {
+                    llOwnerSay("ERROR: NO SUCH NAME IN DATABASE ~ Set_Points");  
+                }
+            }            
+            if (DEBUG)
+            {
+                //llOwnerSay("Emails: " + llDumpList2String(email_list, " , "));
+                llOwnerSay("Points: " + llDumpList2String(name_list, " , "));// print out whole list
+            }
+        }
+
+        ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+        //////      REGISTRATION FUNCTIONS 
+        ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+        else if (channel == Sailing_YOG_Points)
+        {
+            list temp = llParseString2List(message, [Delimiter2], []); //check with space separations
+            
+            if  (llList2String(temp, 0) == Update_YOG_Points )
+            {
+                string id = llList2String(temp, 1);
+                integer NewPoints = llList2Integer(temp,2);
+                integer TheComChannel = 0;
+                if (~llListFindList(name_list, [id]))// if the avatar is already registered, do the following
+                {
+                    update_list(llKey2Name(id),(string)NewPoints); //coms update the reg central scores
+                    
+                    llRegionSay(Registration_Channel,Update_Point_User_String + Delimiter + (string)llList2Key(temp, 1)+ Delimiter + (string)llList2Integer(temp,2) + Delimiter + (string)TheComChannel);//tell other coms of new score
+                }
+                
+            }
+        }
+        else if ( channel == -100 ) //This IF statement is an authentication message from the sub borad to check if the player has been registered before proceeding into the game
+        {
+            if( name == "Sub Board 1" )
+            {
+                if(~llListFindList(name_list, (list)message)) //if player exist
+                {//it exists
+                    //This works because ~(-1) == 0
+                    //It saves bytecode and is faster then doing != -1
+                    llRegionSay(-100, "NAME_EXIST");//sends back a true message
+                }
+                
+                else
+                {
+                    llRegionSay(-100, "NAME_NOT_EXIST");//sends back a false message
+                }
+            }
+        }
+        
+        
+        //###############EDITED BY CLARENCE LIM AKA FYPJ JIGSAW ######################################//
+        ////////////////////////////////////////////////////////////////////////////////////////////////
+        else if ( channel == -101 ) //This IF statement is an authentication message from the sub borad to check if the player has been registered before proceeding into the game
+        {
+            if(name == "PointButton")
+            {
+                //Get the Player name and points by getting the right and left of the message.
+                //Eg. message = points#playername
+                string getPoints = getLeftString(message, "#");
+                string getName = getRightString(message, "#");
+                
+                update_list(getName, getPoints);
+                
+            }
+            if(name == "(BMX)ShopKeeper")
+            {
+                string getpoints = getLeftString(message,"#");
+                string getname = getRightString(message, "#");
+
+                if(~llListFindList(name_list, (list)message)) //if player exist
+                {
+                    //Show the player how much points that the player currently have
+                    integer temp = llListFindList(name_list, [message]);                   //First, Find the location of the avatar on the list
+                    
+                    list temp_list = llList2List(name_list, temp - 1, temp - 1);        //Second, -1 from the location of the avatar name to get the point value
+                                                                                        //since that the foramt is <points, name>.  
+                                                                                          
+                    integer current_points = (integer)llDumpList2String(temp_list, ",");//convert the value of points from string to integer. Doing it this way
+                                                                                        //is because I do not know of any other way  
+                    llRegionSay(-101,(string)current_points);   
+                    update_list(getname,getpoints);                                                    
+                }
+            }
+            if( name == "Sub Board 2" )
+            {
+                if(~llListFindList(name_list, (list)message)) //if player exist
+                {//it exists
+                    //This works because ~(-1) == 0
+                    //It saves bytecode and is faster then doing != -1
+                    llRegionSay(-101, "NAME_EXIST");//sends back a true message
+                }
+                
+                else
+                {
+                    llRegionSay(-101, "NAME_NOT_EXIST");//sends back a false message
+                }
+            }
+        }
+        //////////////////////////////////////////////////////////////////////////////////////////////
+        //////////###########################################################################/////////
+         
+        
+        //++++++++++++++++++ EDITED BY ABDUL SYARIZMAN AKA MAN CAPALINI +++++++++++++++++++++++++++++++//
+        ////////////////////////////////////////////////////////////////////////////////////////////////
+        if ( channel == channelFencing ) //This IF statement is an authentication message from the sub borad to check if the player has been registered before proceeding into the game
+        {
+            if( name == "Fencing Registry" )
+            {
+                string getMsg = getLeftString(message, "#");
+                
+                //if message received == WINNER#playerName
+                if(getMsg == "WINNER")
+                {
+                    string getName = getRightString(message, "#");
+                    update_list(getName, "30");     //add points
+                    
+                }
+                
+                //if message received == LOSER#playerName
+                else if(getMsg == "LOSER")
+                {
+                    string getName = getRightString(message, "#");
+                    update_list(getName, "5");      //add points
+                    
+                }
+                
+                //if message received is only the name
+                else
+                {
+                    if(~llListFindList(name_list, (list)message)) //if player exist
+                    {//it exists
+                        //This works because ~(-1) == 0
+                        //It saves bytecode and is faster then doing != -1
+                        llRegionSay(channelFencing, "NAME_EXIST" + "&" + message);//sends back a true message
+                    }
+                    
+                    else
+                    {
+                        llRegionSay(channelFencing, "NAME_NOT_EXIST" + "&" + message);//sends back a false message
+                    }
+                    
+                }
+                
+            }
+            
+            else if(name == "Fencing ATM")
+            {
+                if(~llListFindList(name_list, (list)message)) //if player exist
+                {//it exists
+                    //This works because ~(-1) == 0
+                    //It saves bytecode and is faster then doing != -1
+                    
+                    //Show the player how much points that the player currently have
+                    integer temp = llListFindList(name_list, [message]);                   //First, Find the location of the avatar on the list
+                    list temp_list = llList2List(name_list, temp - 1, temp - 1);        //Second, -1 from the location of the avatar name to get the point value
+                                                                                        //since that the foramt is <points, name>.  
+                                                                                          
+                    integer current_points = (integer)llDumpList2String(temp_list, ",");//convert the value of points from string to integer.                                                  
+                    
+                    llRegionSay(channelFencing, "NAME_FOUND" + "&" + message + "$" + (string)current_points);//sends back the current points the av has
+                    
+                }
+                
+                else //if player name was not found
+                {
+                    llRegionSay(channelFencing, "NO_NAME_FOUND" + "&" + message);//sends back a false message
+                    
+                }
+                
+            }
+            
+            else if(name == "Fencing Shop")
+            {                
+                //message == "CHECK_POINTS" + "@" + customerName + "$" + string(id) + "^" + item + "#" + point
+                
+                string getMsg = getLeftString(message, "@");
+                if(getMsg == "CHECK_POINTS")
+                {
+                    string getName = getLeftString(getRightString(message, "@"), "$");      //get the av name from the message
+                    
+                    //Show the player how much points that the player currently have
+                    integer temp = llListFindList(name_list, [getName]);                   //First, Find the location of the avatar on the list
+                    list temp_list = llList2List(name_list, temp - 1, temp - 1);        //Second, -1 from the location of the avatar name to get the point value
+                                                                                        //since that the foramt is <points, name>.  
+                                        
+                    integer current_points = (integer)llDumpList2String(temp_list, ",");//convert the value of points from string to integer.                                                  
+                                        
+                    llRegionSay(channelFencing, message + "#" + (string)current_points);//sends back the current points the av has
+                    
+                }
+                
+                //message ==  "UPDATE_POINTS" + "@" + getName + "$" + subtactPoints
+                else if(getMsg == "UPDATE_POINTS")
+                {
+                    string getName = getLeftString(getRightString(message, "@"), "$");         
+                    string getPoints = getRightString(getRightString(message, "@"), "$");            
+                    
+                    update_list(getName, getPoints);     //subtract points from player after buying from shop
+                    
+                }
+                                
+                else
+                {
+                    string getName = getLeftString(message, "*");       //get the av name from the message
+                    if(~llListFindList(name_list, (list)getName))       //check if player exist
+                    {
+                        llRegionSay(channelFencing, "REGISTERED" + "@" + message);          //sends back a true message
+                        
+                    }
+                    
+                    else
+                    {
+                        llRegionSay(channelFencing, "NOT_REGISTERED" + "@" + message);      //sends back a false message
+                        
+                    }
+                    
+                    
+                }
+                
+                
+            }
+            
+        }
+    }
+}

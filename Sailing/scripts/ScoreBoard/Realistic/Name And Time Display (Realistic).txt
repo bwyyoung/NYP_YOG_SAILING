@@ -1,0 +1,706 @@
+//Realistic Racing Board Script
+//By Brian Young/Daijo Zenovka
+//this script is located in the root prim of name and time display(realistic)
+
+//This script receives messages from the Boat Tracker, which contains information about the previous race, the player positions, and their times. This script calculates the total points earned cumulatively for each player, and sends messages to display it as an overall ranking list on the board.
+
+integer DISPLAY_STRING      = 204000; 
+integer DISPLAY_EXTENDED    = 204001; 
+integer REMAP_INDICES       = 204002; 
+integer RESET_INDICES       = 204003; 
+integer SET_FADE_OPTIONS    = 204004; 
+integer SET_FONT_TEXTURE    = 204005; 
+integer SET_LINE_COLOR      = 204006; 
+integer SET_COLOR           = 204007; 
+integer RESCAN_LINKSET      = 204008;
+ 
+ 
+integer Sailing_Scoreboard_Realistic = -307; 
+integer Sailing_Scoreboard_Wacky = -308; 
+
+integer Sailing_YOG_Points = -314;
+
+integer Name_Index = 1;
+integer Time_Index = 11;
+
+string Delimiter = "%$%^";
+string Delimiter2 = "@T!ME";
+
+string Update_YOG_Points = "Update_YOG_Points";
+
+string Reset_Points = "Reset_Points";
+string Start_Sailboard = "Start_Sailboard";
+string Set_Index = "Set_Index";
+string Set_Ratio = "Set_Ratio";
+string Set_Label = "Set_Label";
+string Set_Segs = "Set_Segs";
+string Time_Pass = "Time_Pass";
+string Clear_Segs = "Clear_Segs";
+
+string CurrentDisplay = "NO_DISPLAY";
+string TIME_DISPLAY = "TIME_DISPLAY";
+string RANKING_DISPLAY = "RANKING_DISPLAY";
+string RACE_DISPLAY = "RACE_DISPLAY";
+
+list RaceNames;
+list RaceTimes;
+
+integer CurrentIndex = 0;
+integer MaxNumDisplay = 10;
+integer MaxTimeCount = 30;
+integer MaxPlayerCount = 30;//the maximum number of players to be stored in a high score list
+integer MaxWeeks = 4; //the maximum number of weeks to pass before throwing away points
+list WeekValues = [1.0, 0.5, 0.3, 0.1]; //weekly deprecation of points
+integer PlayerPtsStride; 
+integer IsCalculating =  FALSE;
+
+list RankPoints;// this is stored by: [{pts, name} , ......]
+
+list CurWeekPts; // this is stored by   [{name, curweekpts, curweek1pts, curweek2pts, curweek3pts}]
+
+list TransWeekPts; // this is stored by [{name, Transweekpts, Transweek1pts, Transweek2pts, Transweek3pts}]
+
+list BestTimes;
+
+integer EndIndexNum;
+
+
+integer DurationOffset=10;
+
+integer SwitchDuration = 15;
+integer SwitchTime = 0;
+
+SwitchCurrentDisplay(string theDisplay, integer sleep)
+{
+    if (sleep)
+    {
+   
+        
+    }
+    CurrentDisplay = theDisplay;
+    CurrentIndex = 0;
+    
+    if (CurrentDisplay == TIME_DISPLAY)
+    {
+        DisplayBestTimes();
+    }
+    else if (CurrentDisplay == RANKING_DISPLAY)
+    {
+        DisplayOverallRankings();
+    }
+    else if (CurrentDisplay == RACE_DISPLAY)
+    {
+        DisplayPreviousRace();
+    }
+}
+AlternateCurrentDisplay()
+{
+    
+    if (CurrentDisplay == TIME_DISPLAY)
+    {
+
+            if ((CurrentIndex+MaxNumDisplay*2)<llGetListLength(BestTimes))
+            {
+                CurrentIndex += MaxNumDisplay*2;
+                DisplayBestTimes();
+            }
+            else
+            {
+                CurrentIndex = 0; //or switch to a different display....
+                DisplayPreviousRace();
+            }
+    }
+    else if (CurrentDisplay == RANKING_DISPLAY)
+    {
+            if ((CurrentIndex+MaxNumDisplay*2)<llGetListLength(RankPoints))
+            {
+                CurrentIndex += MaxNumDisplay*2;
+
+                DisplayOverallRankings();
+            }
+            else
+            {
+                CurrentIndex = 0;
+                DisplayBestTimes(); 
+            }
+    }
+    else if (CurrentDisplay == RACE_DISPLAY)
+    {
+
+            if ((CurrentIndex+MaxNumDisplay)<=llGetListLength(RaceNames))
+            {
+                CurrentIndex += MaxNumDisplay;
+                DisplayPreviousRace();
+            }
+            else
+            {
+                CurrentIndex = 0;
+                DisplayOverallRankings(); //go to times
+            }
+    }
+
+
+}
+ClearDisplay()
+{
+    integer i;
+    for (i = Name_Index; i<Time_Index; i++)
+    {
+        llMessageLinked(LINK_THIS,DISPLAY_STRING,"",(string)i);
+    }
+        
+    for (i = Time_Index; i< 21; i++)
+    {
+       llMessageLinked(LINK_THIS,DISPLAY_STRING,"",(string)i);
+    }
+    
+   // llMessageLinked(LINK_THIS,DISPLAY_STRING,"fark","70"); 
+    llRegionSay(Sailing_Scoreboard_Realistic, Set_Label +Delimiter + "" +Delimiter + ""+Delimiter + ""+Delimiter + ""+Delimiter + "");
+
+    
+    integer j = CurrentIndex;
+    
+    
+    string Ratio = Set_Ratio +Delimiter + "";
+    for (i = 0; i< llGetListLength(WeekValues); i++)
+    {
+        Ratio+=Delimiter;
+        Ratio+="";
+
+    }
+    Ratio+=Delimiter + "";
+    llRegionSay(Sailing_Scoreboard_Realistic, Ratio);
+   
+    
+    llSleep(2.0);
+
+    //llMessageLinked(LINK_THIS,DISPLAY_STRING,"",(string)65);
+    // 21-60 ---> point displays
+    // 61-64 ---> ratio displays
+    // 65 -> ratio
+    //66-70 -->week displays
+
+}
+DeleteZeroPlayers()
+{
+    integer i;
+    integer j;
+    list DeletedPlayers;
+    list DeletedScores;
+            for (i = 0 ; i < llGetListLength(RankPoints); i+=2)
+            {
+                if (i>= MaxPlayerCount*2)// if there are outstanding players...
+                {
+                    DeletedPlayers +=  llList2Key(RankPoints,i + 1);//delete them!
+                    DeletedScores+= llList2String(RankPoints,i + 1)+" , "+llList2String(RankPoints,i) + "|";
+                    RankPoints =  llDeleteSubList(RankPoints, i , i + 1);
+                    i = -2;
+                }
+                else if (llList2Integer(RankPoints, i) == 0) //if the player has zero points
+                {
+                    DeletedPlayers +=  llList2Key(RankPoints,i + 1);//delete them!
+                    DeletedScores+= llList2String(RankPoints,i + 1)+" , "+llList2String(RankPoints,i) + "|";
+                    RankPoints =  llDeleteSubList(RankPoints, i , i + 1);
+                    i = -2;
+                }
+            }
+            
+            for (i = 0; i< llGetListLength(CurWeekPts); i += PlayerPtsStride)
+            {
+                for(j = 0; j< llGetListLength(DeletedPlayers); j++ ) 
+                {
+                   if (llList2Key(CurWeekPts,i) == llList2Key(DeletedPlayers,j))  
+                   {
+                       CurWeekPts = llDeleteSubList(CurWeekPts, i , i + PlayerPtsStride - 1);
+                       i = -PlayerPtsStride;
+                   }
+                }   
+                
+            } 
+ 
+            for (i = 0; i< llGetListLength(TransWeekPts); i += PlayerPtsStride)
+            {
+                for(j = 0; j< llGetListLength(DeletedPlayers); j++ ) 
+                {
+                   if (llList2Key(TransWeekPts,i) == llList2Key(DeletedPlayers,j))  
+                   {
+
+                       TransWeekPts = llDeleteSubList(TransWeekPts, i , i + PlayerPtsStride - 1);
+                       i = -PlayerPtsStride;
+                   }
+                }   
+            }
+    
+}
+DisplayPreviousRace()
+{
+    CurrentDisplay = RACE_DISPLAY;
+    ClearDisplay();
+    llRegionSay(Sailing_Scoreboard_Realistic, Clear_Segs);
+    //Race code
+    llMessageLinked(LINK_THIS,DISPLAY_STRING,"Previous Race Results","0"); 
+    ///llMessageLinked(LINK_THIS,DISPLAY_STRING,"Time","66"); -->To be replaced
+    
+    llRegionSay(Sailing_Scoreboard_Realistic, Set_Label +Delimiter + "Time" +Delimiter + ""+Delimiter + ""+Delimiter + ""+Delimiter + "");
+    integer i;
+    
+    integer j = CurrentIndex;
+    
+    
+    string Ratio = Set_Ratio +Delimiter + "";
+    for (i = 0; i< llGetListLength(WeekValues); i++)
+    {
+        Ratio+=Delimiter;
+        Ratio+="";
+
+    }
+        Ratio+=Delimiter + "";
+    llRegionSay(Sailing_Scoreboard_Realistic, Ratio);
+    if (llGetListLength(RaceNames) - CurrentIndex< (MaxNumDisplay) && llGetListLength(RaceNames) - CurrentIndex>=0)
+    {
+        EndIndexNum = llGetListLength(RaceTimes)- CurrentIndex;
+        for (i = Name_Index; i< (llGetListLength(RaceNames)- CurrentIndex + Name_Index); i++)
+        {
+           
+                llMessageLinked(LINK_THIS,DISPLAY_STRING,llList2Key(RaceNames,j),(string)i);
+                    j++;
+        }
+        j = CurrentIndex;
+        for (i = Time_Index; i< (llGetListLength(RaceTimes)- CurrentIndex + Time_Index); i++)//need to fix here
+        {
+            integer inttime = llList2Integer(RaceTimes,j);
+            llMessageLinked(LINK_THIS,DISPLAY_STRING,(string)(inttime/60) + "m" + (string)(inttime%60) + "s",(string)i);
+            j++;
+        }
+    }
+    else
+    {
+        EndIndexNum =  MaxNumDisplay;
+        for (i = Name_Index; i< (MaxNumDisplay + Name_Index); i++)
+        {
+            llMessageLinked(LINK_THIS,DISPLAY_STRING,llList2Key(RaceNames,j),(string)i);
+            j++;
+        }
+        j = CurrentIndex;
+        for (i = Time_Index; i< (MaxNumDisplay + Time_Index); i++)
+        {
+            integer inttime = llList2Integer(RaceTimes,j);    
+            llMessageLinked(LINK_THIS,DISPLAY_STRING,(string)(inttime/60) + "m" + (string)(inttime%60) + "s",(string)i);
+            j++;
+        }
+        
+    }
+    
+    llRegionSay(Sailing_Scoreboard_Realistic, Set_Index + Delimiter + (string)(CurrentIndex + 1) 
+    + Delimiter +(string)EndIndexNum);
+
+}
+DisplayOverallRankings()
+{
+    integer i;
+    integer j;
+    integer k;
+    CurrentDisplay = RANKING_DISPLAY;
+    ClearDisplay();  
+    
+    llMessageLinked(LINK_THIS,DISPLAY_STRING,"Overall Rankings","0"); 
+    //llMessageLinked(LINK_THIS,DISPLAY_STRING,"Points","66"); 
+    
+    llRegionSay(Sailing_Scoreboard_Realistic, Set_Label +Delimiter + "Points" +Delimiter + "Cur. Seg"+Delimiter + "Seg 1"+Delimiter + "Seg 2"+Delimiter + "Seg 3");
+    string Ratio = Set_Ratio;
+    for (i = 0; i< llGetListLength(WeekValues); i++)
+    {
+        Ratio+=Delimiter;
+        Ratio+=llList2String(WeekValues,i);
+    }
+    
+    string Segs = Set_Segs;
+    list Indices;
+
+    j = CurrentIndex;
+    if (llGetListLength(RankPoints)/2 - CurrentIndex/2< (MaxNumDisplay) && llGetListLength(RankPoints) - CurrentIndex>=0)
+    {
+        EndIndexNum = llGetListLength(RankPoints)/2- CurrentIndex/2;
+        for (i = Time_Index; i<  Time_Index+llGetListLength(RankPoints)/2 - CurrentIndex/2; i++)
+        {
+            llMessageLinked(LINK_THIS,DISPLAY_STRING,(string)llList2Integer(RankPoints,j),(string)i);
+
+            j+=2;
+        }
+        j = CurrentIndex;
+        for (i = Name_Index; i < Name_Index  +llGetListLength(RankPoints)/2 - CurrentIndex/2; i++)
+        {            
+            llMessageLinked(LINK_THIS,DISPLAY_STRING,(string)llList2String(RankPoints,j +1),(string)i);
+
+            j+=2; 
+        }
+        
+        for (i = 0 ; i < llGetListLength(CurWeekPts); i+=PlayerPtsStride)
+        {
+            for (j = CurrentIndex ; j < llGetListLength(RankPoints); j+=2)
+            {
+                if (llList2String(RankPoints, j+1) == llList2String(CurWeekPts, i))
+                {
+                    Indices+=i;
+                }
+            
+            }
+        }
+    }
+    else
+    {        
+        EndIndexNum =  MaxNumDisplay;
+        for (i = Time_Index; i<  Time_Index+MaxNumDisplay; i++)
+        {
+            llMessageLinked(LINK_THIS,DISPLAY_STRING,(string)llList2Integer(RankPoints,j),(string)i);
+            j+=2;
+        }
+        j = CurrentIndex;
+        for (i = Name_Index; i<  Name_Index+MaxNumDisplay; i++)
+        {
+            
+            llMessageLinked(LINK_THIS,DISPLAY_STRING,(string)llList2String(RankPoints,j +1),(string)i);
+            j+=2;
+        }
+        
+        for (i = 0 ; i < llGetListLength(CurWeekPts); i+=PlayerPtsStride)
+        {
+            for (j = CurrentIndex ; j < CurrentIndex + MaxNumDisplay*2; j+=2)
+            {
+                if (llList2String(RankPoints, j+1) == llList2String(CurWeekPts, i))
+                {
+                    Indices+=i;
+                }
+            }
+        }
+    }
+    
+    for (i = 0; i< llGetListLength(Indices); i++)
+    {
+                integer DataSlot = llList2Integer(Indices, i) + 1;
+                Segs+=Delimiter;
+                for (k = 0; k< MaxWeeks; k++)
+                {
+                    
+                    
+                    Segs+=llList2String(CurWeekPts,DataSlot + k);
+                    Segs+=Delimiter2;
+                }
+    }
+    
+        Ratio+=Delimiter + "Ratio";
+    llRegionSay(Sailing_Scoreboard_Realistic, Ratio);
+    llRegionSay(Sailing_Scoreboard_Realistic, Segs);
+    
+    
+    llRegionSay(Sailing_Scoreboard_Realistic, Set_Index + Delimiter + (string)((CurrentIndex/2 + 1)) 
+    + Delimiter +(string)EndIndexNum);
+}
+DisplayBestTimes()
+{
+    ClearDisplay();
+    CurrentDisplay = TIME_DISPLAY;
+    llRegionSay(Sailing_Scoreboard_Realistic, Clear_Segs);
+    
+    llMessageLinked(LINK_THIS,DISPLAY_STRING,"Best Times","0"); 
+llRegionSay(Sailing_Scoreboard_Realistic, Set_Label +Delimiter + "Time" +Delimiter + ""+Delimiter + ""+Delimiter + ""+Delimiter + "");
+    ///llMessageLinked(LINK_THIS,DISPLAY_STRING,"Time","66"); 
+    
+    
+    integer i;
+    
+    integer j = CurrentIndex;
+
+    string Ratio = Set_Ratio +Delimiter + "";
+    for (i = 0; i< llGetListLength(WeekValues); i++)
+    {
+        Ratio+=Delimiter;
+        Ratio+="";
+
+    }
+        Ratio+=Delimiter + "";
+    llRegionSay(Sailing_Scoreboard_Realistic, Ratio);
+    j = CurrentIndex;
+    if (llGetListLength(BestTimes)/2 - CurrentIndex/2< (MaxNumDisplay) && llGetListLength(BestTimes) - CurrentIndex>=0)
+    {
+        EndIndexNum = llGetListLength(BestTimes)/2- CurrentIndex/2;
+        for (i = Time_Index; i<  Time_Index+llGetListLength(BestTimes)/2  - CurrentIndex/2; i++)
+        {
+            integer inttime = llList2Integer(BestTimes,j);    
+            llMessageLinked(LINK_THIS,DISPLAY_STRING,(string)(inttime/60) + "m" + (string)(inttime%60) + "s",(string)i); 
+            j+=2;
+        }
+        j = CurrentIndex;
+        for (i = Name_Index; i < Name_Index  +llGetListLength(BestTimes)/2 - CurrentIndex/2; i++)
+        {            
+            llMessageLinked(LINK_THIS,DISPLAY_STRING,(string)llList2String(BestTimes,j +1),(string)i);
+            j+=2;
+        }
+    }
+    else
+    {
+        EndIndexNum =  MaxNumDisplay;
+       for (i = Time_Index; i<  Time_Index+MaxNumDisplay; i++)
+        {
+            integer inttime = llList2Integer(BestTimes,j);    
+            llMessageLinked(LINK_THIS,DISPLAY_STRING,(string)(inttime/60) + "m" + (string)(inttime%60) + "s",(string)i);
+            j+=2;
+        }
+        j = CurrentIndex;
+        for (i = Name_Index; i<  Name_Index+MaxNumDisplay; i++)
+        {
+            
+            llMessageLinked(LINK_THIS,DISPLAY_STRING,(string)llList2String(BestTimes,j +1),(string)i);
+            j+=2;
+        }
+    }
+    llRegionSay(Sailing_Scoreboard_Realistic, Set_Index + Delimiter + (string)((CurrentIndex/2 + 1))
+    + Delimiter +(string)EndIndexNum);
+}
+default
+{
+    state_entry()
+    {
+        
+        PlayerPtsStride = MaxWeeks +1;
+        llListen(Sailing_Scoreboard_Realistic,"",NULL_KEY,"");
+        llRegionSay(Sailing_Scoreboard_Realistic, Set_Index + Delimiter + (string)(CurrentIndex + 1));
+        llSetTimerEvent(1);
+    
+        ClearDisplay();
+        
+        DisplayOverallRankings();
+     //   llMessageLinked(LINK_THIS,Sailing_Scoreboard, Start_Sailboard, NULL_KEY);
+    }
+    touch(integer num)
+    {
+        if (llDetectedKey(0) == llGetOwner())
+        {
+            llResetScript();   
+        }
+    }
+    listen(integer channel,string name, key id, string message)
+    {
+        list temp = llParseString2List(message, [Delimiter], []);
+        if (llList2String(temp,0) == Reset_Points )
+        {
+            llSleep(1.5);
+            IsCalculating=TRUE;
+            
+            integer i;
+            integer j;
+            integer k;
+            integer Week1Slot;
+            list NewPlayers;
+
+            list AddedIndex = [];
+            
+            RaceTimes = [];
+            RaceNames = [];
+
+            for (i = 1; i< llGetListLength(temp); i++)
+            {
+                integer IsRanked = FALSE;//Is the player currently ranked among the top rankers
+                integer IsBestTime = FALSE;
+                list Slot = llParseString2List(llList2String(temp,i), [Delimiter2], []); 
+                llRegionSay(Sailing_YOG_Points, Update_YOG_Points + Delimiter + (string)llList2Key (Slot,0)+ Delimiter+ (string)(llGetListLength(temp) - i));
+                RaceNames += [llList2Key (Slot,0)];
+                RaceTimes += [llList2Integer (Slot,1)];
+               // BestTimes +=[llList2Integer (Slot,1),llList2Key (Slot,0)];//save the player times
+                
+                //calculation of rank points
+                for (j = 0; j< llGetListLength(CurWeekPts); j += PlayerPtsStride)
+                {
+                    if (llList2String(RaceNames,llGetListLength(RaceNames)-1) == llList2String(CurWeekPts, j))// if the current racer is already on the list, just add up his points
+                    {
+                        Week1Slot = j + 1; // this is the current point slot to add to, which is right next to the player name
+                        CurWeekPts = llListReplaceList(CurWeekPts, [(float)(llList2Float(CurWeekPts, Week1Slot) 
+                        +  llGetListLength(temp) - i)]//Formula: its the current week points + your current race points, which is based on the number of people racing. more people, more points
+                        ,Week1Slot,Week1Slot);
+                        IsRanked = TRUE;
+                        AddedIndex += j; //contains the reference index to each name key
+                    }
+
+                }
+                if (!IsRanked) // if they are new, add them to a temporary new player list
+                {
+                    NewPlayers += [(float)(llGetListLength(temp) - i)]; // number of player points
+                    NewPlayers += [llList2Key(RaceNames,llGetListLength(RaceNames)-1)];
+                    //New Players are ordered in descending order
+                }
+                for (j = 0; j< llGetListLength(BestTimes); j+=2)
+                {
+                    if (llList2String(RaceNames,llGetListLength(RaceNames)-1) == llList2String(BestTimes, j + 1))
+                    {
+                        BestTimes = llListReplaceList(BestTimes, [(float)(llList2Float(RaceTimes,llGetListLength(RaceTimes)-1))]
+                        ,j,j);
+                        IsBestTime = TRUE;
+                    } 
+                }
+                if (!IsBestTime)
+                {
+                    BestTimes += llList2Float(RaceTimes,llGetListLength(RaceTimes)-1); 
+                    BestTimes += llList2String(RaceNames,llGetListLength(RaceNames)-1);
+                }
+            }
+            
+            //Sort the times for the player
+            BestTimes = llListSort(BestTimes, 2, TRUE);
+            //Limit the number of recorded top times for the player
+            if (llGetListLength(BestTimes)>=MaxTimeCount*2)
+            {     
+                BestTimes = llList2List(BestTimes,0,MaxTimeCount*2 -1);
+            }
+            
+            
+            RankPoints = llListSort(RankPoints, 2, FALSE);
+            //now that the list is sorted, we have to check out the new players, and see if they can make it to the list
+            for (i = 0; i< llGetListLength(NewPlayers); i+=2)
+            {
+                RankPoints += [llList2Float(NewPlayers, i ) , llList2Key(NewPlayers, i + 1 )]; // just add the new players, later when sorted, remove those at the tail end of the list
+            }
+            for (i = 0; i< llGetListLength(NewPlayers); i+=2)
+            {
+                CurWeekPts += [llList2Key(NewPlayers, i +1) , llList2Float(NewPlayers, i )];
+                
+                for (j = 1; j < MaxWeeks; j++)
+                {
+                    CurWeekPts += [0];   
+                }
+
+            }
+
+            for (i = 0; i< llGetListLength(NewPlayers); i+=2)
+            {
+                TransWeekPts += [llList2Key(NewPlayers, i +1) , llList2Float(NewPlayers, i )];
+                
+                for (j = 1; j < MaxWeeks; j++)
+                {
+                    TransWeekPts += [0];
+                }
+            }
+
+            RankPoints = llListSort(RankPoints, 2, FALSE);//Sort them out again with the added players
+            
+            DeleteZeroPlayers();
+            
+            RankPoints = llListSort(RankPoints, 2, FALSE);//Sort them out again with the deleted players
+
+
+            //if players already exist in the rank list, translate their existing points from the cur week list to the trans week list
+
+            for (i = 0; i< llGetListLength(AddedIndex); i++)
+            {
+                for(k = 1; k <= MaxWeeks; k++ )
+                { 
+                    TransWeekPts = llListReplaceList(TransWeekPts, [ (float)(llList2Float(CurWeekPts,llList2Integer(AddedIndex,i) + k))// the current week number values
+                                                                    * llList2Float(WeekValues,k - 1) ]//the week value multipliers
+                     , llList2Integer(AddedIndex,i) + k 
+                     , llList2Integer(AddedIndex,i) + k );
+                }
+                
+            }
+            
+            //now, with the added points to the trans week, let it reflect in the overall added points
+            for (i = 0; i< llGetListLength(AddedIndex); i++)
+            {
+                integer index = llListFindList(RankPoints, [
+                llList2Key(TransWeekPts,llList2Integer(AddedIndex,i))//find the key in rankpoints based on that in curweekpoints
+                ]); 
+                
+                if (index != -1)
+                {
+                    
+                    
+                    //Copy out the values from transweekpts
+                    float NewValue = 0;
+                    for(k = 1; k <= MaxWeeks; k++ )
+                    {
+                        NewValue += llList2Float( TransWeekPts,llList2Integer(AddedIndex,i )+k );//this is the week integer values
+                    }
+                    RankPoints = llListReplaceList(RankPoints, [NewValue], index-1, index-1);
+                }
+            }
+ 
+            RankPoints = llListSort(RankPoints, 2, FALSE);//Sort them out again with the added players
+
+         //    llOwnerSay("CurWeekPts   "+llDumpList2String(CurWeekPts, " "));
+            // llOwnerSay("TransWeekPts   "+llDumpList2String(TransWeekPts, " "));
+            // llOwnerSay("RankPoints   "+llDumpList2String(RankPoints, " "));
+            
+           //DisplayOverallRankings();///temporary
+            
+            IsCalculating=FALSE;
+            
+        }
+        else if (llList2String(temp,0) == Time_Pass )
+        {
+            integer i;
+            integer j;
+            integer k;
+
+                    //doing reverse replacement of scores to bring the scores forward for deprecation
+                    for (i = 0; i< llGetListLength(CurWeekPts); i+=PlayerPtsStride)
+                    {
+                        for(k = MaxWeeks; k > 1; k-- )
+                        {
+                            CurWeekPts =  llListReplaceList(CurWeekPts, [llList2Float(CurWeekPts, i + k - 1)] , i + k, i+k);
+                        }
+                        CurWeekPts =  llListReplaceList(CurWeekPts, [0.0] , i + 1, i + 1);
+                    }
+                    
+                    //do the coversion to the deprecated values of our game.
+                    for (i = 0; i< llGetListLength(TransWeekPts); i+=PlayerPtsStride)
+                    {
+                        for(k = 1; k <= MaxWeeks; k++ )
+                        { 
+                            TransWeekPts = llListReplaceList(TransWeekPts, [ (float)(llList2Float(CurWeekPts,i + k))// the current week number values
+                                                                            * llList2Float(WeekValues,k - 1) ]//the week value multipliers
+                             , i + k 
+                             , i + k );
+                        }
+                        
+                    }
+                    
+                             //now, with the added points to the trans week, let it reflect in the overall added points
+                    for (i = 0; i< llGetListLength(TransWeekPts); i+=PlayerPtsStride)
+                    {
+                        integer index = llListFindList(RankPoints, [
+                        llList2Key(TransWeekPts,i)//find the key in rankpoints based on that in curweekpoints
+                        ]); 
+                        if (index != -1)
+                        {
+                            //Copy out the values from transweekpts
+                            float NewValue = 0;
+                            for(k = 1; k <= MaxWeeks; k++ )
+                            {
+            
+                                NewValue += llList2Float( TransWeekPts,i+k );//this is the week integer values
+            
+                            }
+             
+                            RankPoints = llListReplaceList(RankPoints, [NewValue], index-1, index-1);
+                        }
+                    }
+                    
+                    RankPoints = llListSort(RankPoints, 2, FALSE);//Sort them out again with the deleted players
+                    DeleteZeroPlayers();
+        }
+    }
+    timer()
+    {
+
+        SwitchTime++;
+        
+        if (SwitchTime > SwitchDuration)
+        {
+            SwitchTime = 0;
+               
+            AlternateCurrentDisplay();
+        }
+
+         
+    }
+}
+ 
+  

@@ -1,0 +1,104 @@
+//Email Bank Script
+//Written by Brian Young/ Daijo Zenovka
+//Located in server root
+
+integer Email_Channel = 4321;
+integer Registration_Channel = -313;
+
+list email_list;  //local email list, it sends info to computer and server based on new registrants
+
+string CurrentStatus = "CurrentStatus";
+string DeleteEmail = "DeleteEmail";
+
+
+//regionsay msgs
+string Add_Email_Member = "Add__Email_Member"; //send new member EMAIL data from server Email Bank to computers
+string Update_Email_Member = "Update_Email_Member";
+//linked message msgs
+string Show_Points = "Show_Points";
+string Add_User = "Add_User"; //linked message to the reg central about a new email member
+
+string Delimiter = "%$";
+
+integer DEBUG = TRUE;
+
+integer REG_MODULE = 0;
+
+default
+{
+    state_entry()
+    {
+        //***********************Email Entry Values***********************
+        llListen(Email_Channel,"",NULL_KEY,"");
+    }
+    touch_start(integer num)
+    {
+        if(llDetectedKey(0) == llGetOwner())
+            llResetScript();   
+        
+    }
+    listen(integer channel, string name, key id, string message) 
+    {
+        ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+        //////      EMAIL FUNCTIONS 
+        ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+        if (channel == Email_Channel )
+        {
+            if (message == CurrentStatus)
+            {
+                integer index = llListFindList(email_list, [llKey2Name(id)]);
+                if (~llListFindList(email_list, [llKey2Name(id)]))// if the avatar is already registered, do the following
+                {
+                    //integer current_points = GetCurrentPoints(llKey2Name(id));  //NOTE
+                    string target_key = id;
+                    
+                    
+                    llMessageLinked(LINK_THIS, REG_MODULE, "Show_Points" + Delimiter + (string)id,NULL_KEY);
+                    llInstantMessage(target_key, llKey2Name(id) +", Your current email is: " + llList2String(email_list, index + 1)); //Instant Message is used so as to
+                                                                                                               //not spam the main channel with messages
+                    
+                }
+                else
+                {
+                    llInstantMessage(id , llKey2Name(id) + ", you do not have an email registered.");
+                }
+            }
+            else if(message == DeleteEmail)
+            {
+                //under review status
+            }
+            else
+            {
+                integer index = llListFindList(email_list, [llKey2Name(id)]);
+                if (~llListFindList(email_list, [llKey2Name(id)])) //Check if the name is already registered.
+                {
+                    email_list = llListReplaceList(email_list, [message],index + 1,index + 1);
+                    llRegionSay(Registration_Channel, Update_Email_Member + Delimiter + (string)id + Delimiter + (string)message); //sending message to coms
+                }
+                else
+                {
+                    if (message != llKey2Name(id))//ensure that email is not the same as avatar name
+                    {
+                        email_list+= llKey2Name(id);
+                        email_list+= message;
+    
+                       // name_list = name_list + ["0"] + [llKey2Name(id)]; //Add Avatar into the register list and give it a initial point value of 0 //NOTE
+                        llMessageLinked(LINK_THIS, REG_MODULE, Add_User + Delimiter + (string)id,NULL_KEY);
+                        llRegionSay(Registration_Channel, Add_Email_Member + Delimiter + (string)id + Delimiter + (string)message); //sending message to coms
+                        //llSay(0, llDumpList2String(name_list, "\n")); // print out whole list
+                    }
+                    else
+                    {
+                        llInstantMessage(id ,llKey2Name(id) + ", your email "+ message + " is invalid");
+                    }
+                }
+                llInstantMessage(id ,llKey2Name(id) + ", your new email is "+ message);
+            }
+            if (DEBUG)
+            {
+                llOwnerSay("Emails: " + llDumpList2String(email_list, " , "));
+                //llOwnerSay("Points: " + llDumpList2String(name_list, " , "));// print out whole list
+            }
+        }
+    }
+}

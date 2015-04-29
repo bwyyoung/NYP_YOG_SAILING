@@ -1,0 +1,306 @@
+//Turning & Camera Laser(Wacky) Script
+//By Brian Young/Daijo Zenovka
+//Belongs to primitive 'Laser Wacky 1' of Root of Boat
+
+//with references to the Flying Tako Sailboat Script
+
+//This script controls the camera and turning of the boat through player input.
+
+string Enable_Wacky = "Enable_Wacky";
+string Delimiter = "%$%^";
+
+string Boat_Slip = "Boat_Slip";
+string Toggle_Control = "Toggle_Control";
+
+//Wacky variables
+integer SlipTime = 0;
+integer Direction = 1;
+
+integer CurrentCoolDown = 0;
+integer CoolDown = 5;
+
+float SlipValue = 1;
+
+integer Boat_Channel = -306;
+
+
+integer SIDE_CAM =  FALSE;
+
+key avatar;
+
+
+integer permSet=FALSE;
+
+list dataList;
+
+float rotSpeed=1.6;
+float rotDelta;
+vector eulerTurnLeft;
+vector eulerTurnRight;
+rotation quatTurnLeft=ZERO_ROTATION;
+rotation quatTurnRight=ZERO_ROTATION;
+float rotTweak=1.0;         //scales boat turning rate (80% for now)
+
+integer SAIL_UP=FALSE;
+integer USER_CONTROL = TRUE; 
+
+//heeling variables
+float heelAngle;
+float heelTorque;
+float heelAdd;
+
+
+//script module flags
+integer CONTROLS_MODULE=1;
+
+spinCam()//Enable Spinning camera
+{
+    llSetCameraParams([
+    CAMERA_ACTIVE, 1, // 1 is active, 0 is inactive
+    CAMERA_BEHINDNESS_ANGLE, 360.0, // (0 to 180) degrees
+    CAMERA_BEHINDNESS_LAG, 0.0, // (0 to 3) seconds
+    CAMERA_DISTANCE, 2.0, // ( 0.5 to 10) meters
+    CAMERA_FOCUS_LAG, 0.1 , // (0 to 3) seconds
+    CAMERA_FOCUS_LOCKED, FALSE, // (TRUE or FALSE)
+    CAMERA_FOCUS_THRESHOLD, 1.0, // (0 to 4) meters
+    CAMERA_PITCH, 0.0, // (-45 to 80) degrees
+    CAMERA_POSITION_LAG, 0.1, // (0 to 3) seconds
+    CAMERA_POSITION_LOCKED, FALSE, // (TRUE or FALSE)
+    CAMERA_POSITION_THRESHOLD, 1.0, // (0 to 4) meters
+    CAMERA_FOCUS_OFFSET, <0,0,1> // <-10,-10,-10> to <10,10,10> meters
+    ]);  
+     
+}
+//set camera position for third person view
+setCamera(integer sidecam) {
+
+    if (sidecam)
+    {
+            llSetCameraParams([
+                CAMERA_ACTIVE, 1, // 1 is active, 0 is inactive
+                CAMERA_BEHINDNESS_ANGLE, 1.0, // (0 to 180) degrees
+                CAMERA_BEHINDNESS_LAG, 0.0, // (0 to 3) seconds
+                CAMERA_DISTANCE, 2.0, // ( 0.5 to 10) meters
+                CAMERA_FOCUS_LAG, 0.1 , // (0 to 3) seconds
+                CAMERA_FOCUS_LOCKED, FALSE, // (TRUE or FALSE)
+                CAMERA_FOCUS_THRESHOLD, 1.0, // (0 to 4) meters
+                CAMERA_PITCH, 0.0, // (-45 to 80) degrees
+                CAMERA_POSITION_LAG, 0.1, // (0 to 3) seconds
+                CAMERA_POSITION_LOCKED, FALSE, // (TRUE or FALSE)
+                CAMERA_POSITION_THRESHOLD, 1.0, // (0 to 4) meters
+                CAMERA_FOCUS_OFFSET, <0,0,1> // <-10,-10,-10> to <10,10,10> meters
+            ]);
+        
+    }
+    else
+    {
+    llSetCameraParams([
+        CAMERA_ACTIVE, 0, // 1 is active, 0 is inactive
+        CAMERA_BEHINDNESS_ANGLE, 10.0, // (0 to 180) degrees
+        CAMERA_BEHINDNESS_LAG, 0.0, // (0 to 3) seconds
+        CAMERA_DISTANCE, 3.0, // ( 0.5 to 10) meters
+        CAMERA_FOCUS_LAG, 0.1 , // (0 to 3) seconds
+        CAMERA_FOCUS_LOCKED, FALSE, // (TRUE or FALSE)
+        CAMERA_FOCUS_THRESHOLD, 1.0, // (0 to 4) meters
+        CAMERA_PITCH, 0.0, // (-45 to 80) degrees
+        CAMERA_POSITION_LAG, 0.1, // (0 to 3) seconds
+        CAMERA_POSITION_LOCKED, FALSE, // (TRUE or FALSE)
+        CAMERA_POSITION_THRESHOLD, 1.0, // (0 to 4) meters
+        CAMERA_FOCUS_OFFSET, ZERO_VECTOR // <-10,-10,-10> to <10,10,10> meters
+    ]);
+       llSetCameraEyeOffset(<-5,0,3>);
+      //llSetCameraAtOffset(<1,0,1>);   
+    }
+}
+
+
+default
+{
+    state_entry()
+    {
+        llSetTimerEvent(0);
+        SlipTime =0;
+        SlipValue = 0;
+        llMessageLinked(LINK_ALL_OTHERS,0,Boat_Slip + Delimiter + (string)FALSE,NULL_KEY);
+    }
+    listen(integer channel, string name, key id, string msg) 
+    {
+        if (channel == Boat_Channel)
+        {
+            list temp = llParseString2List(msg, [Delimiter], []);
+            if (llList2String(temp,0) == Boat_Slip)
+            {
+                if (USER_CONTROL)
+                {
+                    
+                    string name = llList2String(temp,1);
+                    if (name == llGetObjectName())
+                    {
+                        //we have a boat slip call
+                        
+                        integer IsSlip =  llList2Integer(temp,2);
+                        
+                        if (IsSlip)
+                        {
+                            if (CurrentCoolDown == 0)
+                            {
+                                SlipTime = llList2Integer(temp,3);
+                                SlipValue = llList2Float(temp,4);
+                                llSetTimerEvent(1);
+                                USER_CONTROL = FALSE;
+                                integer curdir = (integer)llFrand(2);
+    
+                                if (curdir)
+                                    Direction = 1;
+                                else
+                                    Direction = -1;
+                                llSetVehicleVectorParam(VEHICLE_ANGULAR_MOTOR_DIRECTION,<rotSpeed/2,0.0,rotSpeed*SlipValue* Direction>);
+    
+                                spinCam();
+                            }
+                        }
+                        else
+                        {
+                            llSetTimerEvent(0);
+                            SlipTime =0;
+                            SlipValue = 1;
+                            USER_CONTROL = TRUE;
+                        }
+                        llMessageLinked(LINK_THIS, 0,Toggle_Control + Delimiter + (string)USER_CONTROL,NULL_KEY);
+                    }
+                }
+                   
+            }  
+        }
+       else if (channel==0) 
+        {
+            if (llAvatarOnSitTarget()==id) 
+            {
+                if (llGetAgentInfo(id) & AGENT_ON_OBJECT) 
+                {
+
+                    if (msg=="raise") 
+                    {//raise the sail and enable control
+                        if (!permSet) 
+                        {
+                            llRequestPermissions(llAvatarOnSitTarget(),PERMISSION_TAKE_CONTROLS | PERMISSION_TRIGGER_ANIMATION| PERMISSION_CONTROL_CAMERA);
+                            permSet=TRUE;
+                        }
+                        SAIL_UP = TRUE;
+                    }
+                    else if (msg=="lower") 
+                    {
+                        SAIL_UP= FALSE;
+                    }
+                }
+            }
+        }
+    }
+    changed(integer change) 
+    {
+        avatar=llAvatarOnSitTarget();
+        
+        if (change & CHANGED_LINK) 
+        {
+            if (avatar==NULL_KEY) //if avatar stands up from boat
+            {
+                llResetScript();
+            }
+            else
+            {
+                // we can listen to channels
+                llListen(Boat_Channel,"",NULL_KEY,""); 
+                llListen(0,"",avatar,"");
+            }
+        }
+        
+    }       
+    timer()
+    {
+        //spinning cooldown
+        if (CurrentCoolDown >0)
+            CurrentCoolDown--;
+        else
+        {
+            if (SlipTime>0)
+            {
+                SlipTime--;//slipping time
+                llSetVehicleVectorParam(VEHICLE_ANGULAR_MOTOR_DIRECTION,<rotSpeed/2,0.0,rotSpeed*SlipValue* Direction>);
+            }
+    
+            else if (SlipTime == 0)
+            {
+                CurrentCoolDown = CoolDown;
+                SlipTime = -1;
+                SlipValue = 1;
+                //let user regain control
+                USER_CONTROL = TRUE;
+                llMessageLinked(LINK_THIS, 0,Toggle_Control + Delimiter + (string)USER_CONTROL,NULL_KEY);
+                setCamera(SIDE_CAM);
+                llSetVehicleVectorParam(VEHICLE_ANGULAR_MOTOR_DIRECTION,<0.0,0.0,0.0>);
+            }
+            //if sliptime reaches negative value and cooldown is 0, return boat to normal
+            if (SlipTime == -1 && CurrentCoolDown == 0)
+            {
+                llSetTimerEvent(0);
+            }
+            
+               
+            
+        }
+        
+    }
+    run_time_permissions(integer perms) 
+    {
+        if (perms & (PERMISSION_TAKE_CONTROLS) ) {
+            llTakeControls(CONTROL_RIGHT | CONTROL_LEFT | CONTROL_ROT_RIGHT |
+            CONTROL_ROT_LEFT | CONTROL_FWD | CONTROL_BACK | CONTROL_DOWN | CONTROL_UP,TRUE,FALSE);
+            permSet=TRUE;
+            setCamera(SIDE_CAM);
+        }
+    }
+
+    control(key id, integer held, integer change) 
+    {
+        if (USER_CONTROL)
+        {
+            integer Turning = FALSE;
+            if (SAIL_UP)
+            {
+                if (change &CONTROL_DOWN &held)
+                {
+                    SIDE_CAM = !SIDE_CAM;
+                    setCamera(SIDE_CAM);
+                }   
+                if ( (change & held & CONTROL_LEFT) || (held & CONTROL_LEFT) || (change & held & CONTROL_ROT_LEFT) || (held & CONTROL_ROT_LEFT) ) 
+                {
+                    llSetVehicleVectorParam(VEHICLE_ANGULAR_MOTOR_DIRECTION,<rotSpeed/2,0.0,rotSpeed>);
+                    Turning = TRUE;//boat rotation controls
+                }
+                else if ( (change & held & CONTROL_RIGHT) || (held & CONTROL_RIGHT) || (change & held & CONTROL_ROT_RIGHT) || (held & CONTROL_ROT_RIGHT) ) 
+                {
+                    llSetVehicleVectorParam(VEHICLE_ANGULAR_MOTOR_DIRECTION,<-rotSpeed/2.0,0.0,-rotSpeed>);
+                    Turning = TRUE;
+                }
+                else if ( (change & ~held & CONTROL_LEFT) || (change & ~held & CONTROL_ROT_LEFT) ) 
+                {
+                    llSetVehicleVectorParam(VEHICLE_ANGULAR_MOTOR_DIRECTION,<0.0,0.0,0.0>);
+                }
+                else if ( (change & ~held & CONTROL_RIGHT) || (change & ~held & CONTROL_ROT_RIGHT) ) 
+                {
+                    llSetVehicleVectorParam(VEHICLE_ANGULAR_MOTOR_DIRECTION,<0.0,0.0,0.0>);
+                }  
+            }
+        }
+    }    
+    link_message(integer from,integer to,string str,key id) 
+    {
+        
+        if (to==CONTROLS_MODULE) {
+            dataList=llCSV2List(str);
+            rotSpeed=rotTweak*llList2Float(dataList,2);
+            heelTorque=5*llList2Float(dataList,3);
+            llSetVehicleVectorParam(VEHICLE_ANGULAR_MOTOR_DIRECTION,<heelTorque,0.0,0.0>);
+        }
+    }
+}

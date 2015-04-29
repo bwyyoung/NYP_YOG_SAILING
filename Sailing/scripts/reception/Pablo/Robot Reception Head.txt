@@ -1,0 +1,253 @@
+//Robot Reception Head Script
+//Written by Brian Young/ Daijo Zenovka
+// Goes in Pablo the Robot's Head.
+
+///Pablo is a robot that explains to the player about the Youth Olympic Games in Second Life. This script is located in the root of Pablo’s head.
+
+integer DetectRate = 2;
+float DetectRange = 10.0;
+rotation DefaultRot;
+
+integer Active = FALSE;
+integer Talking = FALSE;
+
+integer SoundEnabled = TRUE;
+
+string IsSound = "(Sound Enabled)";
+string Name = "Pablo the Robot";
+
+//messages
+string About = "About";
+string Computer = "Computer";
+string Teleport = "Teleport";
+
+string Delimiter = "%$%^";
+
+integer CurrentEE = 0;
+integer MaxEE = 4;
+string EEName = "EE";
+list EEDesc = ["Try touching the jukebox behind me and listen to some funky tunes baby!",
+                "Personally, I believe that Macs and PCs can coexist together, like how apples are needed as human food, and windows are needed for human houses.",
+                "No, I am not a repair droid. If you would like to know my true protocol, please touch me again.",
+                "*Who's your daddy?* "];
+
+string Welcome = "Hello, my name is Pablo, and I am your reception robot. Welcome to the Youth Olympic Games in Second Life.";
+
+string MoreInfo = "For more information, please say the keywords specified on the sign beside me on channel 1234.";
+
+key index = NULL_KEY;
+
+list NewComers = [];
+
+list Sensed = [];
+list Talked = [];
+
+integer ReceptionChannel = 1234;
+
+LookAt(key theID)
+{
+    list thePos = llGetObjectDetails(theID, [OBJECT_POS]);
+    vector CurrentPos = llGetPos();
+    vector Displace = llList2Vector(thePos,0) - CurrentPos;
+
+    float Angle = llAtan2(Displace.y,Displace.x);
+    if (Angle < 0.0) 
+            Angle += TWO_PI;
+        
+    rotation theRot = llEuler2Rot(<0.0,0.0,Angle>);
+        
+    llSetRot(theRot); 
+    
+    
+}
+
+default
+{
+    state_entry()
+    {
+        DefaultRot = llGetRot();
+        
+        if (SoundEnabled)
+            llSetObjectName(Name + IsSound);
+        else
+           llSetObjectName(Name); 
+        llListen(ReceptionChannel, "", NULL_KEY,"");
+            
+    }
+    listen( integer channel, string name, key id, string message )
+    {
+        if (Active)
+        {
+            if (channel ==ReceptionChannel && !Talking)
+            {
+                if (message  == About)
+                {
+                    Talking = TRUE;
+                    llPlaySound("about 1",1.0);  
+                    llSay(0, "The Youth Olympic Games In Second Life, are virtual games that emulate the real games in the Olympics. ");
+                    llPreloadSound("moreinfo");
+                    llPreloadSound("about 2");
+                    llPreloadSound("computer 1");
+                    llPreloadSound("Welcome");
+                    llPreloadSound("getting there");
+                    llSleep(2.5);
+                    llPlaySound("about 2",1.0);  
+                    llSay(0, "These games are meant to inform the young, and the young at heart, about the event, and to encourage an active lifestyle.");
+                    integer i;
+                    for (i = 0; i< MaxEE; i++)
+                        llPreloadSound(EEName + " " + (string)i);
+                    llPreloadSound("about 1");
+                    llSleep(2.5);
+                    Talking = FALSE;
+                }
+                else if (message == Computer)
+                {
+                    Talking = TRUE;
+                    llPlaySound("computer 1",1.0);  
+                    llSay(0, "The computer stores information about your email, and YOG Points. You must give an email address to play the games, and in the games you earn points. 
+");
+                    llPreloadSound("moreinfo");
+                    llPreloadSound("about 2");
+                    llPreloadSound("about 1");
+                    llPreloadSound("computer 2");
+                    llPreloadSound("getting there");
+                    integer i;
+                    for (i = 0; i< MaxEE; i++)
+                        llPreloadSound(EEName + " " + (string)i);
+                    llSleep(1.0);
+                    llStopSound();
+                    llPlaySound("computer 2",1.0);  
+                    llSay(0, "You can redeem those points through the computer, and set your email by saying commands through a certain channel. To check out information about point redemption, just touch it.");
+                    llPreloadSound("moreinfo");
+                    llPreloadSound("about 2");
+                    llPreloadSound("about 1");
+                    llPreloadSound("computer 2");
+                    llPreloadSound("getting there");
+                    for (i = 0; i< MaxEE; i++)
+                        llPreloadSound(EEName + " " + (string)i);
+                    llPreloadSound("Welcome");
+                    llStopSound();
+                    Talking = FALSE;
+                    
+                }
+                else if (message == Teleport)
+                {
+                    Talking = TRUE;
+                    llPlaySound("getting there",1.0);  
+                    llSay(0, "To get to the events themselves, please right click on the respective teleporter and choose 'Teleport'.");
+                    llPreloadSound("about 1");
+                    llPreloadSound("computer 1");
+                    llPreloadSound("Welcome");
+                    integer i = 0;
+                    llPreloadSound(EEName + " " + (string)i);
+                    llSleep(2.5);
+                    Talking = FALSE;
+                    
+                }
+                
+            }
+        }
+        
+    }
+    timer()
+    {
+        llSensor("", NULL_KEY, AGENT,DetectRange,PI/3);   
+        
+    }
+    sensor(integer num)
+    {
+        integer isSensed = FALSE;
+        integer isTalked = FALSE;
+        
+        LookAt(llDetectedKey(0));
+        
+        if (~llListFindList(Sensed, [llDetectedKey(0)]))
+        {
+            isSensed = TRUE;
+            
+        }
+        else
+        {
+            Sensed+=llDetectedKey(0);   
+
+        }
+        
+            if (~llListFindList(NewComers, [llDetectedKey(0)]))
+            {
+                
+                
+            }
+            else
+            {
+                NewComers+=llDetectedKey(0);
+                llPlaySound("Welcome",1.0);  
+                llSay(0, "Hello, my name is Pablo, and I am your reception robot. Welcome to the Youth Olympic Games, in Second Life. ");
+                llPreloadSound("moreinfo");
+                llPreloadSound("about 1");//causes script to sleep for 1 second
+                llPreloadSound("getting there");
+                llPreloadSound("computer 1");
+                llPreloadSound("computer 2");
+                llPreloadSound("getting there");
+                llSleep(2.5);
+                llPlaySound("moreinfo",1.0);  
+                llSay(0, "For information, please say the keywords, specified on the sign beside me on channel 1234. (type /1234, then your message) ");
+                integer i;
+                for (i = 0; i< MaxEE; i++)
+                    llPreloadSound(EEName + " " + (string)i);
+                llSleep(3.5);
+                llStopSound();
+            }
+
+    }
+    touch_start(integer num)
+    {
+        if (llDetectedKey(0) == llGetOwner())
+        {
+            Active = ! Active;
+            
+            if (Active)
+            {
+                llSetTimerEvent(DetectRate);
+                llOwnerSay("Bot Activated.");
+            }
+            else
+            {
+                llSetTimerEvent(0);
+                llSetRot(DefaultRot);
+                NewComers = [];
+                Sensed = [];
+                Talked = [];
+                llOwnerSay("Bot Deactivated.");
+            }
+            
+            
+        }
+        else
+        {
+            if (Active)
+            {
+                llPlaySound(EEName + " " + (string)CurrentEE, 1.0);
+                llSay(0,llList2String(EEDesc, CurrentEE));
+                
+                CurrentEE++;
+                
+                if (CurrentEE >= MaxEE)
+                    CurrentEE = 0;  
+                llPreloadSound(EEName + " " + (string)CurrentEE);
+                
+                
+            }
+
+        }
+        
+    }
+    no_sensor()
+    {
+        llSetRot(DefaultRot);
+        Sensed = [];
+        Talked = [];
+        index = NULL_KEY;
+        CurrentEE = 0;
+    }
+}
+ 

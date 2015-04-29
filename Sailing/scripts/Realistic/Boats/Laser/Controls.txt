@@ -1,0 +1,722 @@
+//Controls Laser(Realistic) Script
+//By Brian Young/Daijo Zenovka
+//Belongs to primitive 'Laser 1' of Root of Boat
+
+//with references to the Flying Tako Sailboat Script
+
+//This script handles boat controls and applies speed, rotation to the boat. It also tracks the player and has an on board security system checking if the boat belongs to the player.  It is located in the root primitive.
+
+string DefaultBoatName="Laser 1";
+
+//miscellaneous
+key owner; //boat owner
+key avatar = NULL_KEY;//person sitting at the helm
+integer ownerVersion=TRUE;
+integer SAIL_UP=FALSE;
+integer THROTTLING = FALSE;
+integer SIDE_CAM =  FALSE;
+integer permSet=FALSE;
+integer SELF_UNSIT = TRUE;
+integer HUD_ON=TRUE;
+integer UNLOCKED = FALSE; 
+string idStr;
+integer numTouches=0;
+list dataList;
+
+// various commands called by the boat tracker
+string Teleport_Avatar =  "Teleport_Avatar";
+string Reset_Points = "Reset_Points";
+string Set_Name = "Set_Name";
+string Delimiter = "%$%^";
+
+string Delimiter2 = "@T!ME";
+
+//performance constants
+float timerFreq=1.0;        //timer frequency, seconds
+
+///Animations
+string ANIMATION_DEFAULT = "default"; //default sittin animation
+string ANIMATION_PULL = "pull";   // 
+string ANIMATION_PULL_TRANSITION = "pull-transition";
+string ANIMATION_PULLSAIL = "pullsail";
+string ANIMATION_NULL = "NULL";
+
+//directions as to whether you are sitting on the left or the right
+string SITTING_LEFT = "sitting left";
+string SITTING_RIGHT = "sitting right";
+
+
+string Current_Sitting = "sitting left";
+string Current_Animation="default";
+
+
+string Disqualify_Player = "Disqualify_Player";
+
+string Unlock_Boats = "Unlock_Boats";
+
+string SetCurRot = "SetCurRot";
+
+//script module flags
+integer CONTROLS_MODULE=1;
+integer SAIL_MODULE=2;
+integer TELEPORTER_MODULE = 3;
+integer COLORIZER_MODULE=4;
+integer AVATAR_NAME = 5;
+integer NAME_MODULE = 6;
+integer Olympic_Bracelet = -305;
+integer Boat_Channel = -306;
+integer point_Data = -303;
+integer Registry = -304;
+
+//reused math variables
+vector eulerRot;
+vector currEuler;
+rotation quatRot; 
+rotation currRot;
+vector fwdVec;
+vector upVec;
+vector leftVec;
+
+//linear motion variables
+float currSpeed;
+vector groundSpeed=ZERO_VECTOR;
+float spdFactor=0.0;
+float leeway;
+float rotSpeed=1.0;
+float rotDelta;
+vector eulerTurnLeft;
+vector eulerTurnRight;
+rotation quatTurnLeft=ZERO_ROTATION;
+rotation quatTurnRight=ZERO_ROTATION;
+float rotTweak=0.8;         //scales boat turning rate (80% for now)
+float maxSpeedMotor=10.0;
+
+list Port1 = [225,119,36,222,96,25]; //port 1 coordinates
+list Location = [211,127,40,189,81,23]; // shore coordinates
+
+//heeling variables
+float heelAngle;
+float heelTorque;
+float heelAdd;
+
+//environment
+float seaLevel;
+float windDir;              //we can set this in the practice version
+float windSpeed;            //we can set this in the practice version
+
+//linked parts
+integer BOW;
+integer HULL;
+integer STERN;
+integer SAIL;
+integer WINDVANE;
+integer PORTBENCH;
+integer STARBOARDBENCH;
+integer RUDDER;
+integer TILLER;
+integer CENTERBOARD;
+integer FLOOR;
+integer MAST;
+integer TRANSOM;
+integer REARFLOOR;
+integer HUD;
+integer NUMBER1;
+integer NUMBER2;
+integer PROP;
+integer SAILHOLDER; 
+integer SPLASH1;
+integer SPLASH2;
+
+//wind algorithm parameters
+float rate=1;
+float avgAng=45;
+float avgSpd=3;
+float halfArc=0.2;
+float spdRng=1;
+
+
+///////////////////////////////////////////////////////////////////////////////////
+
+//set initial vehicle parameters
+setVehicleParams() 
+{
+    llSetVehicleType         (VEHICLE_TYPE_BOAT);
+    llSetVehicleRotationParam(VEHICLE_REFERENCE_FRAME,ZERO_ROTATION);
+    llSetVehicleFlags        (VEHICLE_FLAG_NO_DEFLECTION_UP|VEHICLE_FLAG_HOVER_GLOBAL_HEIGHT
+                             |VEHICLE_FLAG_LIMIT_MOTOR_UP ); 
+    //linear motion
+    llSetVehicleVectorParam  (VEHICLE_LINEAR_FRICTION_TIMESCALE,<50.0,2.0,0.5>);;
+    llSetVehicleVectorParam  (VEHICLE_LINEAR_MOTOR_DIRECTION,ZERO_VECTOR);
+    llSetVehicleFloatParam   (VEHICLE_LINEAR_MOTOR_TIMESCALE,10.0);
+    llSetVehicleFloatParam   (VEHICLE_LINEAR_MOTOR_DECAY_TIMESCALE,60);
+    llSetVehicleFloatParam   (VEHICLE_LINEAR_DEFLECTION_EFFICIENCY,0.85);
+    llSetVehicleFloatParam   (VEHICLE_LINEAR_DEFLECTION_TIMESCALE,1.0);
+    //angular motion
+    llSetVehicleVectorParam  (VEHICLE_ANGULAR_FRICTION_TIMESCALE,<5,0.1,0.1>);
+    llSetVehicleVectorParam  (VEHICLE_ANGULAR_MOTOR_DIRECTION,ZERO_VECTOR);
+    llSetVehicleFloatParam   (VEHICLE_ANGULAR_MOTOR_TIMESCALE,0.1);
+    llSetVehicleFloatParam   (VEHICLE_ANGULAR_MOTOR_DECAY_TIMESCALE,3);
+    llSetVehicleFloatParam   (VEHICLE_ANGULAR_DEFLECTION_EFFICIENCY,1.0);
+    llSetVehicleFloatParam   (VEHICLE_ANGULAR_DEFLECTION_TIMESCALE,1.0);
+    //vertical attractor
+    llSetVehicleFloatParam   (VEHICLE_VERTICAL_ATTRACTION_TIMESCALE,3.0);
+    llSetVehicleFloatParam   (VEHICLE_VERTICAL_ATTRACTION_EFFICIENCY,0.8);
+    //banking
+    llSetVehicleFloatParam   (VEHICLE_BANKING_EFFICIENCY,0.0);
+    llSetVehicleFloatParam   (VEHICLE_BANKING_MIX,0.8);
+    llSetVehicleFloatParam   (VEHICLE_BANKING_TIMESCALE,1);
+    //vertical control
+    llSetVehicleFloatParam   (VEHICLE_HOVER_HEIGHT,seaLevel);
+    llSetVehicleFloatParam   (VEHICLE_HOVER_EFFICIENCY,2.0);
+    llSetVehicleFloatParam   (VEHICLE_HOVER_TIMESCALE,1.0);
+    llSetVehicleFloatParam   (VEHICLE_BUOYANCY,1.0);
+}
+
+setVehicleParamsMotor() 
+{
+    //vertical attractor
+    llSetVehicleFloatParam   (VEHICLE_VERTICAL_ATTRACTION_TIMESCALE,1.0);
+    llSetVehicleFloatParam   (VEHICLE_VERTICAL_ATTRACTION_EFFICIENCY,0.8);
+    //banking
+    llSetVehicleFloatParam   (VEHICLE_BANKING_EFFICIENCY,1.0);
+    llSetVehicleFloatParam   (VEHICLE_BANKING_MIX,1.0);
+    llSetVehicleFloatParam   (VEHICLE_BANKING_TIMESCALE,1);    
+}
+
+//automatically detect link nums for each named part
+getLinkNums() 
+{
+    integer i;
+    integer linkcount=llGetNumberOfPrims();  
+    for (i=1;i<=linkcount;++i) {
+        string str=llGetLinkName(i);
+        if (str=="bow") BOW=i;
+        if (str=="hull") HULL=i;
+        if (str=="stern") STERN=i;
+        if (str=="sail") SAIL=i;
+        if (str=="mast") MAST=i;
+        if (str=="windindicator") WINDVANE=i;
+        if (str=="floor") FLOOR=i;
+        if (str=="transom") TRANSOM=i;
+        if (str=="tiller") TILLER=i;
+        if (str=="rudder") RUDDER=i;
+        if (str=="centerboard") CENTERBOARD=i;
+        if (str=="starboardbench") STARBOARDBENCH=i;
+        if (str=="portbench") PORTBENCH=i;
+        if (str=="rearfloor") REARFLOOR=i;
+        if (str=="hud") HUD=i;
+        if (str=="number1") NUMBER1=i;
+        if (str=="number2") NUMBER2=i;
+        if (str=="prop") PROP=i;          
+        if (str=="sailholder") SAILHOLDER = i; 
+    }
+}
+
+//set camera position for third person view
+setCamera(integer sidecam) 
+{
+    
+    if (sidecam)
+    {// set camera to rear of avatar
+            llSetCameraParams([
+                CAMERA_ACTIVE, 1, // 1 is active, 0 is inactive
+                CAMERA_BEHINDNESS_ANGLE, 1.0, // (0 to 180) degrees
+                CAMERA_BEHINDNESS_LAG, 0.0, // (0 to 3) seconds
+                CAMERA_DISTANCE, 2.0, // ( 0.5 to 10) meters
+                CAMERA_FOCUS_LAG, 0.1 , // (0 to 3) seconds
+                CAMERA_FOCUS_LOCKED, FALSE, // (TRUE or FALSE)
+                CAMERA_FOCUS_THRESHOLD, 1.0, // (0 to 4) meters
+                CAMERA_PITCH, 0.0, // (-45 to 80) degrees
+                CAMERA_POSITION_LAG, 0.1, // (0 to 3) seconds
+                CAMERA_POSITION_LOCKED, FALSE, // (TRUE or FALSE)
+                CAMERA_POSITION_THRESHOLD, 1.0, // (0 to 4) meters
+                CAMERA_FOCUS_OFFSET, <0,0,1> // <-10,-10,-10> to <10,10,10> meters
+            ]);
+        
+    }
+    else
+    {// set camera to rear of boat
+        llSetCameraParams([
+            CAMERA_ACTIVE, 0, // 1 is active, 0 is inactive
+            CAMERA_BEHINDNESS_ANGLE, 10.0, // (0 to 180) degrees
+            CAMERA_BEHINDNESS_LAG, 0.0, // (0 to 3) seconds
+            CAMERA_DISTANCE, 3.0, // ( 0.5 to 10) meters
+            CAMERA_FOCUS_LAG, 0.1 , // (0 to 3) seconds
+            CAMERA_FOCUS_LOCKED, FALSE, // (TRUE or FALSE)
+            CAMERA_FOCUS_THRESHOLD, 1.0, // (0 to 4) meters
+            CAMERA_PITCH, 0.0, // (-45 to 80) degrees
+            CAMERA_POSITION_LAG, 0.1, // (0 to 3) seconds
+            CAMERA_POSITION_LOCKED, FALSE, // (TRUE or FALSE)
+            CAMERA_POSITION_THRESHOLD, 1.0, // (0 to 4) meters
+            CAMERA_FOCUS_OFFSET, ZERO_VECTOR // <-10,-10,-10> to <10,10,10> meters
+        ]);
+        llSetCameraEyeOffset(<-11,0,11>);
+        llSetCameraAtOffset(<3,0,3.5>);   
+    }
+}
+
+//figure out where to put boat when it is rezzed
+setInitialPosition() 
+{
+    vector pos=llGetPos();
+    float groundHeight=llGround(ZERO_VECTOR);
+    float waterHeight = llWater(ZERO_VECTOR);
+    seaLevel=llWater(ZERO_VECTOR);
+    upright();
+
+    //if over water, set boat height to sealevel + 0.12m;
+    if (groundHeight <= waterHeight) {
+        pos.z = waterHeight + 0.12;
+        while (llVecDist(llGetPos(),pos)>.001) 
+            llSetPos(pos);
+    }
+}
+
+//set sit target for helmsperson
+setSitTarget(string ThePosition) 
+{
+    //this function will change the sitting position of the rider based on the direction he is turning
+    
+    integer Change =  FALSE;
+    vector pos;
+    rotation rot;
+    rotation avRot;
+    
+    //if the rider is not currently throtting(turning rudder or sail), make him do his default animation
+    if (!THROTTLING)
+        StartAnimation(ANIMATION_DEFAULT);
+    //if we have a position shift, then change position
+    if (ThePosition != Current_Sitting)
+    {
+        Current_Sitting  = ThePosition;
+        Change = TRUE;
+    }
+
+    //set the position of the character
+    if (Current_Sitting == SITTING_LEFT)
+    {
+        avRot=llEuler2Rot(<0,0, -PI_BY_TWO>);
+        pos = <-1,0.8,0.5>;
+    }
+    else if (Current_Sitting == SITTING_RIGHT)
+    {
+        avRot=llEuler2Rot(<0,0,PI_BY_TWO>);
+        pos = <-1,-0.8,0.5>;
+    }        
+    
+    rot = avRot/llGetRootRotation();
+    key userkey = llAvatarOnSitTarget();
+    
+    if (userkey)
+    {
+        integer numlinks = llGetNumberOfPrims();
+        do 
+        {
+            if (userkey == llGetLinkKey(numlinks))
+            {
+                llSetLinkPrimitiveParams(numlinks, [PRIM_POSITION,   pos ]);
+                llSetLinkPrimitiveParams(numlinks, [PRIM_ROTATION, rot]);
+            }
+        }while(--numlinks);   
+    }
+
+}
+
+//force boat upright
+upright() 
+{
+    currRot=llGetRot();
+    currEuler=llRot2Euler(currRot);
+    leftVec=llRot2Left(currRot);
+    heelAngle=llAsin(leftVec.z);
+    eulerRot=<-heelAngle,0,0>;
+    quatRot=llEuler2Rot(eulerRot);
+    llRotLookAt(quatRot*currRot,0.2,0.2);
+}
+//start an animation
+StartAnimation (string TheAnimationName)
+{
+    if (Current_Animation != TheAnimationName)
+    {
+        if (Current_Animation != ANIMATION_NULL)
+        {
+            StopAnimation();
+        }
+        Current_Animation = TheAnimationName;
+        llStartAnimation(Current_Animation);
+    }
+}
+//stop an animation
+StopAnimation()
+{
+    llStopAnimation(Current_Animation);
+    Current_Animation = ANIMATION_NULL;
+}
+//this function communicates with the player's lifejacket and causes the player to teleport back to the shore
+ReturnPlayer()
+{
+    integer i;
+    string locationmessage = Teleport_Avatar + Delimiter + llGetObjectName() + Delimiter;
+
+    for (i = 0; i< llGetListLength(Location); i++)
+    {
+        locationmessage+=llList2String(Location, i);
+        locationmessage+=" ";
+    }
+    llRegionSay(Olympic_Bracelet,locationmessage);  
+    
+}
+//this function calls whenever the player stands up abruptly on his boat
+DisqualifyPlayer()
+{
+    llRegionSay(point_Data, Disqualify_Player  + Delimiter + llGetObjectName());    
+}
+
+//reset the display name on the boats hull
+ResetName()
+{
+    integer i;
+
+    string SentName = Set_Name + Delimiter;
+
+    list CurName = llParseString2List(llGetObjectName(),[" "],[]);
+    for (i = 0; i < llGetListLength(CurName); i++ )
+    {
+        SentName+= Delimiter2;
+        SentName +=" ";
+    }
+    llMessageLinked(LINK_THIS, NAME_MODULE,SentName  , NULL_KEY);    
+    
+}
+
+
+//reset stuff
+startup() 
+{
+    llSetTimerEvent(0);
+
+    owner=llGetOwner();
+    llSetStatus(STATUS_ROTATE_X | STATUS_ROTATE_Z | STATUS_ROTATE_Y,TRUE);
+    llSetStatus(STATUS_PHYSICS,FALSE);
+    llSetStatus(STATUS_PHANTOM,FALSE);
+    llSetStatus(STATUS_BLOCK_GRAB,TRUE);
+    llSetTimerEvent(0);
+    setInitialPosition();
+    setVehicleParams();
+    setSitTarget(SITTING_RIGHT);
+    getLinkNums();                               
+    llMessageLinked(HUD,1000,"",NULL_KEY);      //reset HUD
+    llMessageLinked(SAIL,1000,"",NULL_KEY);     //reset sail
+    llMessageLinked(WINDVANE,1000,"",NULL_KEY); //turn off windindicator
+    currSpeed=0;
+    
+    if (llGetObjectName() != DefaultBoatName)
+    {
+        llSetObjectName(DefaultBoatName);
+    }
+    string SentName = Set_Name + Delimiter;
+
+    llMessageLinked(LINK_THIS, NAME_MODULE,SentName  , NULL_KEY);
+    
+    llMessageLinked(SAIL,SAIL_MODULE,"reset",NULL_KEY);
+    llMessageLinked(SAILHOLDER,SAIL_MODULE,"reset",NULL_KEY);
+    llMessageLinked(LINK_THIS,COLORIZER_MODULE,"reset",NULL_KEY);
+    llMessageLinked(LINK_SET, 0, "reset" +  Delimiter, NULL_KEY);
+
+    llListen(Boat_Channel,"",NULL_KEY,"");
+    llListen(Registry,"",NULL_KEY,"");
+    
+}
+
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+//state default///////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+default {
+    
+    
+    state_entry() {
+        startup();
+        Current_Animation = ANIMATION_NULL;
+        llSetStatus(STATUS_BLOCK_GRAB,TRUE);//do not allow boat to be dragged, and thus enable cheating
+    }
+    
+    on_rez(integer param) {
+        llResetScript();
+    }
+
+    changed(integer change) 
+    {
+        //check if avatar just sat down on boat
+        avatar=llAvatarOnSitTarget();
+        if (change & CHANGED_LINK) 
+        {
+            if (avatar==NULL_KEY) //if avatar stands up from boat
+            {
+                if (!(llGetAgentInfo(avatar) & AGENT_ON_OBJECT)) 
+                {
+                    llMessageLinked(WINDVANE,1000,"",NULL_KEY);//turn off windindicator
+                    if (SAIL_UP) 
+                    {
+                        llOwnerSay("Mainsail lowered.");
+                        llMessageLinked(SAIL,SAIL_MODULE,"changed",NULL_KEY);
+                        llMessageLinked(SAILHOLDER,SAIL_MODULE,"changed",NULL_KEY);
+                    }
+                    if (permSet) 
+                    {
+                        llReleaseControls();
+                        permSet=FALSE;
+                        StopAnimation();
+                    }
+                    if (SELF_UNSIT)//if the player stood up by himself
+                    {
+                        //return and disqualify the player
+                        //disqualify the player
+                        DisqualifyPlayer();
+                        ReturnPlayer();
+                        llDie(); //kill the boat
+                        llResetScript();
+                    }
+                    else
+                        llResetScript(); //just reset the boat, as a result of a invalid player trying to sit on preset owner boat
+                
+                }
+           }
+           else 
+           {
+               //if the avatar's name is the same as that of the boat (set when rezzed from registry)
+               if (llGetObjectName() == llKey2Name(avatar))
+               {
+                   llWhisper(0,"Say 'raise' to start sailing."); // allow him to sit
+                   llSetObjectName(llKey2Name(avatar));
+                   llMessageLinked(WINDVANE,AVATAR_NAME,llKey2Name(avatar),NULL_KEY);
+                   llListen(0,"",avatar,"");
+
+                   llRequestPermissions(avatar,PERMISSION_TAKE_CONTROLS | PERMISSION_TRIGGER_ANIMATION| PERMISSION_CONTROL_CAMERA);            
+                    SELF_UNSIT = TRUE;
+               }
+               else
+               {
+                   //otherwise, this boat does not belong to the avatar. unsit the avatar and bring him back to shore via lifejacket
+                   llWhisper(0,"You do not have permission to operate this boat.");
+                   llUnSit(avatar);
+                   string a = Teleport_Avatar + Delimiter + llKey2Name(avatar) + Delimiter;
+                   integer i;
+                   for (i = 0; i< llGetListLength(Port1); i++)
+                   {
+                       a+=llList2String(Port1, i);
+                       a+=" " ;
+                   }
+                   SELF_UNSIT = FALSE;
+                   llRegionSay(Olympic_Bracelet,a);
+               } 
+                    
+           
+            }
+        }
+    }      
+
+    listen(integer channel, string name, key id, string msg) 
+    {
+        if (channel==0) 
+        {
+            if (llAvatarOnSitTarget()==id) {
+                if (llGetAgentInfo(id) & AGENT_ON_OBJECT) 
+                {
+                    if (msg=="raise" && UNLOCKED) 
+                    {
+                        //the boat will raise the sail
+                        if (!permSet) 
+                            llRequestPermissions(llAvatarOnSitTarget(),PERMISSION_TAKE_CONTROLS | PERMISSION_TRIGGER_ANIMATION| PERMISSION_CONTROL_CAMERA); // request permissions to control player camera and animations
+                        permSet=TRUE;
+                        llSetStatus(STATUS_PHYSICS,TRUE);
+                        llMessageLinked(SAIL,SAIL_MODULE,msg,NULL_KEY);
+                        llMessageLinked(SAILHOLDER,SAIL_MODULE,msg,NULL_KEY);
+                        llMessageLinked(WINDVANE,4,"",NULL_KEY);
+                        SAIL_UP= TRUE;
+                        llSetTimerEvent(timerFreq);
+                        StartAnimation(ANIMATION_PULL);
+                        
+                    }
+                    else if (msg=="lower") 
+                    {//lower sail
+                        llMessageLinked(SAIL,SAIL_MODULE,msg,NULL_KEY);
+                        llMessageLinked(SAILHOLDER,SAIL_MODULE,msg,NULL_KEY);
+                        SAIL_UP= FALSE;
+                        
+                        StartAnimation(ANIMATION_DEFAULT);
+                    }
+                    else 
+                    {
+                        if (!UNLOCKED && msg=="raise")
+                            llWhisper(0,"Boat Locked.");   
+                        else if (!UNLOCKED && msg=="lower")
+                            llWhisper(0,"Boat Locked.");
+                    }   
+            
+                }
+            }
+ 
+        }
+        else if (channel == Registry)
+        {
+            list temp = llParseString2List(msg, [Delimiter], []);
+            if (llList2String(temp,0) == Reset_Points)   
+            {//if the registry requests it, destroy this boat
+               llDie();
+               llResetScript();
+            }
+            
+        }
+        else if (channel == Boat_Channel) 
+        {
+            list temp = llParseString2List(msg, [Delimiter], []);
+            if (llList2String(temp,0) == Teleport_Avatar)   // if there is a request to teleport the avatar out of a race...
+            {
+                if (llList2String(temp,1) == llKey2Name(llAvatarOnSitTarget())) 
+                {
+                    llUnSit(llAvatarOnSitTarget());//unsit my avatar
+                    llRegionSay(Olympic_Bracelet,llList2String(temp,0) + Delimiter + llList2String(temp,1) + Delimiter + llList2String(temp,2));//move him out
+                    llDie(); // kill the boat
+                    llResetScript();
+                }
+            }
+            else if (llList2String(temp,0) == Set_Name) // set the boats name
+            {
+                if (llGetObjectName() == DefaultBoatName) // it can only be done once. this is to assign it to a owner.
+                {
+                    list temp2 = llParseString2List(llList2String(temp, 1), [Delimiter2], []);
+                    integer i;
+                    string newname;
+                    for (i = 0; i< llGetListLength(temp2); i++)
+                    {
+                        newname+=llList2String(temp2, i);
+                        if (i + 1 !=llGetListLength(temp2))
+                            newname+=" ";
+                    }
+                    llSetObjectName(newname);
+                    llMessageLinked(LINK_THIS, NAME_MODULE,msg, NULL_KEY);                
+                }
+
+            }
+            else if (llList2String(temp,0) == Unlock_Boats) 
+            {
+                UNLOCKED = llList2Integer(temp,1);
+                
+            }
+            
+        }
+    }    
+    
+    run_time_permissions(integer perms) 
+    {
+        if (perms & (PERMISSION_TAKE_CONTROLS) ) 
+        {
+            llTakeControls(CONTROL_RIGHT | CONTROL_LEFT | CONTROL_ROT_RIGHT |
+            CONTROL_ROT_LEFT | CONTROL_FWD | CONTROL_BACK | CONTROL_DOWN | CONTROL_UP,TRUE,FALSE);
+            permSet=TRUE;
+            //set the players new animation and stop his current animation
+            llStopAnimation("sit");
+            setSitTarget(SITTING_RIGHT);
+            setCamera(SIDE_CAM);
+            StartAnimation(ANIMATION_DEFAULT);
+
+        }
+    }
+    
+    control(key id, integer held, integer change) {
+        
+        integer Turning = FALSE;
+
+        if (SAIL_UP && UNLOCKED) // the player can only control the boat after raising his sail
+        {
+            if ( (change & held & CONTROL_LEFT) || (held & CONTROL_LEFT) || (change & held & CONTROL_ROT_LEFT) || (held & CONTROL_ROT_LEFT) ) 
+            { // directional controls
+                llSetVehicleVectorParam(VEHICLE_ANGULAR_MOTOR_DIRECTION,<rotSpeed/2.0,0.0,rotSpeed>);
+                setSitTarget(SITTING_LEFT);
+                Turning = TRUE;
+            }
+            else if ( (change & held & CONTROL_RIGHT) || (held & CONTROL_RIGHT) || (change & held & CONTROL_ROT_RIGHT) || (held & CONTROL_ROT_RIGHT) ) // directional controls
+            {
+                llSetVehicleVectorParam(VEHICLE_ANGULAR_MOTOR_DIRECTION,<-rotSpeed/2.0,0.0,-rotSpeed>);
+                setSitTarget(SITTING_RIGHT);
+                Turning = TRUE;
+            }
+            else if ( (change & ~held & CONTROL_LEFT) || (change & ~held & CONTROL_ROT_LEFT) ) 
+            {
+                llSetVehicleVectorParam(VEHICLE_ANGULAR_MOTOR_DIRECTION,<0.0,0.0,0.0>);
+                
+            }
+            else if ( (change & ~held & CONTROL_RIGHT) || (change & ~held & CONTROL_ROT_RIGHT) ) 
+            {
+                llSetVehicleVectorParam(VEHICLE_ANGULAR_MOTOR_DIRECTION,<0.0,0.0,0.0>);
+            }
+            
+            if (change &CONTROL_DOWN &held)
+            {
+                SIDE_CAM = !SIDE_CAM;
+                setCamera(SIDE_CAM); // this changes our perspective to the side cam view, that of the avatar
+                //or it changes  it to the rear fixed view
+            }
+            
+            //sail/throttle controls
+            if ( (held & CONTROL_FWD) && (held & CONTROL_UP) ) //sail controls
+            {
+                    llMessageLinked(SAIL,SAIL_MODULE,"fwd_big",NULL_KEY);
+                    StartAnimation(ANIMATION_PULL_TRANSITION);
+                    THROTTLING = TRUE;
+            }
+            else if ( (held & CONTROL_FWD) || (change & held & CONTROL_FWD) ) // sail controls
+            {
+                    llMessageLinked(SAIL,SAIL_MODULE,"fwd_small",NULL_KEY);
+                    StartAnimation(ANIMATION_PULLSAIL);
+                    THROTTLING = TRUE;
+            }
+            else if ( (held & CONTROL_BACK) && (held & CONTROL_UP) ) //sail controls
+            {
+                    llMessageLinked(SAIL,SAIL_MODULE,"back_big",NULL_KEY);
+                    StartAnimation(ANIMATION_PULL_TRANSITION);
+                    THROTTLING = TRUE;
+            }
+            else if ( (held & CONTROL_BACK) || (change & held & CONTROL_BACK) ) // sail controls
+            {
+                    llMessageLinked(SAIL,SAIL_MODULE,"back_small",NULL_KEY);
+                    StartAnimation(ANIMATION_PULLSAIL);
+                    THROTTLING = TRUE;
+            }
+            else //otherwise go back to the pull animation if no other controls are used
+            {
+                if (!Turning)
+                    StartAnimation(ANIMATION_PULL);
+                THROTTLING = FALSE;
+            }
+        }
+    }    
+    timer()
+    {
+        //at every timer event, send data about the boat's current orientation to the world to the sail primitive
+        list TheRot;
+        rotation currRot=llGetRot();
+        TheRot+=currRot.x;
+        TheRot+=currRot.y;
+        TheRot+=currRot.z;
+        TheRot+=currRot.s;
+        llMessageLinked(SAIL,SAIL_MODULE,SetCurRot + Delimiter + llDumpList2String(TheRot, " "),NULL_KEY);
+    }
+    link_message(integer from,integer to,string str,key id) 
+    {
+        //adjust the vehicle orientation and velocity based on sail's calculations.
+        if (to==CONTROLS_MODULE) {
+            dataList=llCSV2List(str);
+            currSpeed=llList2Float(dataList,0);
+            leeway=llList2Float(dataList,1);
+            rotSpeed=rotTweak*llList2Float(dataList,2);
+            heelTorque=5*llList2Float(dataList,3);
+            llSetVehicleVectorParam(VEHICLE_LINEAR_MOTOR_DIRECTION,<currSpeed,leeway,0>);
+            llSetVehicleVectorParam(VEHICLE_ANGULAR_MOTOR_DIRECTION,<heelTorque,0.0,0.0>);
+        }
+    }
+
+}

@@ -1,0 +1,57 @@
+//eyes Script 
+//By Brian Young/Daijo Zenovka
+//Goes in eyes of merlion
+
+integer Wacky_Channel = -309;
+
+string Enable_Wacky = "Enable_Wacky";
+
+string Delimiter = "%$%^";
+
+integer IsWacky = FALSE;
+
+
+
+update(integer SetWacky)
+{
+
+    
+    if (SetWacky)
+    {
+
+                 
+        llSetLinkPrimitiveParams(LINK_THIS, [25, ALL_SIDES, 0.5]);   
+    }
+    else
+    {
+        llSetLinkPrimitiveParams(LINK_THIS, [25, ALL_SIDES, 0]);  
+   
+    }   
+    // --> turn off
+}
+
+default
+{
+    state_entry()
+    {
+        llListen(Wacky_Channel,"", NULL_KEY, "");
+        
+        update(IsWacky);
+    }
+    listen( integer channel, string name, key id, string message )
+    {
+        if (channel == Wacky_Channel)
+        {
+            list temp = llParseString2List(message, [Delimiter], []);   
+            
+            if (llList2String(temp,0) == Enable_Wacky)
+            {
+                IsWacky = llList2Integer(temp,1);
+                
+                
+                update(IsWacky);
+            }
+        }
+    }
+ 
+}

@@ -1,0 +1,402 @@
+//SailRot Laser(Wacky) Script
+//By Brian Young/Daijo Zenovka
+//Belongs to primitive 'sail' of Child of Boat
+
+//with references to the Flying Tako Sailboat Script
+
+//It is used to rotate the sail above the boat, as well as calculate boat velocity based on the sails angle and the boat’s orientation to the wind. It is located in the sail primitive.
+
+
+//script module flags
+integer CONTROLS_MODULE=1;
+integer SAIL_MODULE=2;
+integer MOTOR_MODULE=3;
+integer COLORIZER_MODULE=4;
+
+
+
+//environment
+vector wind;
+float windAngle;
+float absWindAngle;
+float depth;
+float seaLevel;
+
+//reused math variables
+vector eulerRot;
+vector currEuler;
+rotation quatRot;
+rotation currRot;
+
+//boat variables
+float zRotAngle;
+vector fwdVec;
+vector upVec;
+vector leftVec;
+float compass;
+
+//heeling variables
+float heelAngle;
+float heelTorque;
+float heelAdd;
+
+//linear motion variables
+float currSpeed;
+vector groundSpeed=ZERO_VECTOR;
+float spdFactor=0.0;
+float leeway;
+
+//angular motion variables
+float rotSpeed;
+float rotDelta;
+vector eulerTurnLeft;
+vector eulerTurnRight;
+rotation quatTurnLeft=ZERO_ROTATION;
+rotation quatTurnRight=ZERO_ROTATION;
+
+//sail variables
+integer boomAngle;
+integer currBoomAngle=0;
+integer delta;
+integer incr;
+float optBoomAngle;
+float trimFactor;
+
+//performance constants
+float timerFreq=1.0;        //timer frequency, seconds
+float maxSpeed=10.0;        //maximum allowed speed
+integer sheetAngle=5;       //initial sheet angle setting
+integer ironsAngle=35;      //this is as close as the boat can sail to the wind
+float slowingFactor=0.7;    //speed drops by this factor every timerFreq seconds if sailing into the wind
+float leewayTweak=0.5;      //scales leeway (0=no leeway)
+float speedTweak=1.0;       //scales speed
+float rotTweak=5.0;         //scales boat turning rate
+float heelTweak=0.5;        //scales amount of heeling
+float maxWindSpeed=20.0;    //used for heeling calculation
+float windDir;              //we can set this in the practice version
+float windSpeed;            //we can set this in the practice version
+
+
+//miscellaneous
+string dataString;
+key owner;//boat owner
+key avatar;//person sitting at the helm
+integer SAIL_UP=FALSE;
+integer HUD_ON=TRUE;
+float convert=1;
+string units=" m/s";
+
+
+//linked parts
+integer BOW;
+integer HULL;
+integer STERN;
+integer SAIL;
+integer WINDVANE;
+integer SAILHOLDER;
+integer PORTBENCH;
+integer STARBOARDBENCH;
+integer RUDDER;
+integer TILLER;
+integer CENTERBOARD;
+integer FLOOR;
+integer MAST;
+integer TRANSOM;
+integer REARFLOOR;
+integer HUD;
+integer NUMBER1;
+integer NUMBER2;
+integer PROP;
+integer SPLASH1;
+integer SPLASH2;
+
+float SplashRate  = 3;
+float WindSpeedCONST = 10;
+
+string SetSplash  = "SetSplash";
+string SetCurRot = "SetCurRot";
+string Delimiter = "%$%^";
+
+rotation childRot;
+rotation initRot;
+
+//update heads-up display (in 1st and 3rd person view)
+updateHUD() 
+{
+    //this is updating the text above the boat
+    compass=PI_BY_TWO-zRotAngle;
+    while (compass<0) compass+=TWO_PI;
+    calcDepth();
+    dataString ="Heading:          "     +(string)((integer)(compass*RAD_TO_DEG))+" deg\n";
+    dataString+="Wind Angle:       "  +(string)((integer)(windAngle*RAD_TO_DEG))+" deg\n";
+    dataString+="Wind Speed:   "  +llGetSubString((string)(windSpeed*convert),0,3)+units+"\n";
+    dataString+="Ground Speed: "+llGetSubString((string)(llVecMag(groundSpeed*convert)),0,3)+units+"\n";
+    dataString+="Depth:             "       +llGetSubString((string)depth,0,3)+" m\n";
+    dataString+="Sail Angle:         "  +(string)(-boomAngle)+" deg\n";
+    dataString+="Sheet Angle:      " +(string)sheetAngle+" deg\n\n\n\n";
+    float rate;
+    if (llVecMag(groundSpeed*convert)>0)
+        rate = 1/(llVecMag(groundSpeed*convert)*SplashRate);
+    else
+        rate  = 0; 
+    llMessageLinked(SPLASH1, 0, SetSplash +  Delimiter + (string)rate, NULL_KEY);
+    llMessageLinked(SPLASH2, 0, SetSplash +  Delimiter + (string)rate, NULL_KEY);
+    llMessageLinked(HUD,1001,dataString,NULL_KEY);//sends data to HUD prim above and behind the boa
+}
+//calculate wind relative to boat
+calcWindAngle() 
+{ 
+
+    wind=-llWind(ZERO_VECTOR);
+    windDir=llAtan2(wind.y,wind.x);//direction wind is blowing FROM
+    windSpeed=WindSpeedCONST; // wind speed is constant for wacky boat
+
+    currEuler=llRot2Euler(currRot); //This is the current euler of sail's global rotation, z is the rotation reference
+    zRotAngle=currEuler.z;//boat heading
+    leftVec=llRot2Left(currRot);
+    windAngle=windDir-zRotAngle;
+    while (windAngle>PI) windAngle-=TWO_PI;//bw -PI and PI
+    while (windAngle<-PI) windAngle+=TWO_PI;//bw -PI and PI    
+}
+
+//calculate angle of sail (or boom) based on sheet setting and the wind
+calcBoomDelta() 
+{///// #2
+    boomAngle=sheetAngle;
+
+    delta=boomAngle-currBoomAngle;
+    currBoomAngle=boomAngle;      
+    childRot=llGetLocalRot();
+    eulerRot=<delta*DEG_TO_RAD,0,0>;
+    quatRot=llEuler2Rot(eulerRot);
+    rotation rota = quatRot*childRot;
+    string  b = (string)rota.x+ " " +(string)rota.y + " " +(string)rota.z + " " +(string)rota.s;
+
+    llMessageLinked(SAILHOLDER,SAIL_MODULE,b,NULL_KEY);
+    llSetLocalRot(rota);
+}
+
+//calculate heel angle based on wind and sail settings
+calcHeelAngle() 
+{ ///// #3
+    heelAngle=llAsin(leftVec.z);
+    if (SAIL_UP)
+        if (llFabs(windAngle+boomAngle)>3*DEG_TO_RAD)
+            heelTorque=SAIL_UP*llSin(windAngle)*llCos(heelAngle)*PI_BY_TWO*(windSpeed/maxWindSpeed)*llCos(boomAngle*DEG_TO_RAD)*heelTweak;
+        else heelTorque=0;
+    else heelTorque=0;
+    heelAdd=heelTorque-heelAngle;
+    eulerRot=<heelAdd,0,0>;
+    quatRot=llEuler2Rot(eulerRot);
+}
+
+
+//calculate boat speed
+calcSpeed() 
+{ 
+    groundSpeed=llGetVel();
+    absWindAngle=llFabs(windAngle);
+
+    if (absWindAngle*RAD_TO_DEG-llFabs(boomAngle)<10) 
+        trimFactor=0;
+    else 
+    {
+        optBoomAngle=0.5*absWindAngle*RAD_TO_DEG;
+        trimFactor=(90.-llFabs(optBoomAngle-llFabs(boomAngle)))/90.;
+    }
+    if (absWindAngle<ironsAngle*DEG_TO_RAD) 
+        currSpeed*=slowingFactor;
+    else 
+    {
+        if (SAIL_UP) {
+            currSpeed=speedTweak*(llCos(windAngle/2.)+0.5)*windSpeed*trimFactor;
+            if (currSpeed>maxSpeed) currSpeed=maxSpeed;
+        }
+        else currSpeed*=0.8;
+    }
+}
+
+//calculate leeway (lateral drift) due to wind
+calcLeeway() 
+{///// #5
+    leeway=SAIL_UP*-llSin(windAngle)*llSin(heelAngle)*windSpeed*leewayTweak;    
+}
+
+//calculate turning rate based on current speed
+calcTurnRate() 
+{///// #6
+    spdFactor=llVecMag(groundSpeed)/(maxSpeed);
+    //rotSpeed=0.4-(spdFactor)*0.4;
+    rotSpeed=0.5+(spdFactor)/2.0;
+}
+
+//gets depth of water below boat
+calcDepth() 
+{
+    depth=llWater(ZERO_VECTOR)-llGround(ZERO_VECTOR);
+}
+
+
+
+//automatically detect link nums for each named part
+getLinkNums() {
+    integer i;
+    integer linkcount=llGetNumberOfPrims();  
+    for (i=1;i<=linkcount;++i) {
+        string str=llGetLinkName(i);
+        if (str=="bow") BOW=i;
+        if (str=="hull") HULL=i;
+        if (str=="stern") STERN=i;
+        if (str=="sail") SAIL=i;
+        if (str=="mast") MAST=i;
+        if (str=="windindicator") WINDVANE=i;
+        if (str=="floor") FLOOR=i;
+        if (str=="transom") TRANSOM=i;
+        if (str=="tiller") TILLER=i;
+        if (str=="rudder") RUDDER=i;
+        if (str=="centerboard") CENTERBOARD=i;
+        if (str=="starboardbench") STARBOARDBENCH=i;
+        if (str=="portbench") PORTBENCH=i;
+        if (str=="rearfloor") REARFLOOR=i;
+        if (str=="hud") HUD=i;
+        if (str=="number1") NUMBER1=i;
+        if (str=="number2") NUMBER2=i;
+        if (str=="prop") PROP=i;  
+        if (str=="sailholder") SAILHOLDER = i;        
+        if (str=="Splash 1") SPLASH1 = i;
+        if (str=="Splash 2") SPLASH2 = i;
+    }
+}
+
+
+//raise sail
+raiseSail() {
+    SAIL_UP=TRUE;
+    llOwnerSay("Raising mainsail.");
+    llMessageLinked(WINDVANE,4,"",NULL_KEY);      
+    raise();
+} 
+
+//lower sail but leave physics on
+lowerSail() {
+    llOwnerSay("Lowering mainsail.");
+    currBoomAngle=0;
+    sheetAngle=5;
+    SAIL_UP=FALSE; 
+    lower();
+}
+//lower sail texture
+lower() 
+{
+    llSetLocalRot(initRot);
+    llSetTexture("saildown",1);
+    llSetTexture("saildown",3);
+}
+//raise sail texture
+raise ()
+{  
+    llSetTexture("sailup",1); 
+    llSetTexture("sailup",3);
+}
+// reset  sail to initial position
+reset() 
+{
+    llSetLocalRot(initRot);    
+    llSetAlpha(1.0,ALL_SIDES);
+}
+
+default {
+    
+    state_entry() 
+    {
+        //set link numbers for calling later
+        getLinkNums();
+        llSetText("",ZERO_VECTOR,1.0);
+        llMessageLinked(HUD,1001,"",NULL_KEY);
+        
+        llSetObjectName("sail");
+        initRot=llEuler2Rot(<0,PI_BY_TWO,0>);
+        llSetLocalRot(initRot);
+        llSetTexture("saildown",1); 
+        llSetTexture("saildown",3);
+        llSetAlpha(1.0,ALL_SIDES);  
+
+    }
+    
+    on_rez(integer param) {
+        llAllowInventoryDrop(TRUE);
+    }
+    
+    link_message(integer from,integer to,string msg,key id) 
+    {
+        if (from==LINK_ROOT && to==SAIL_MODULE) 
+        {
+            // adjust the sail angle
+            if (msg=="fwd_small") {
+                sheetAngle+=1;
+                if (sheetAngle>90) sheetAngle=90;   
+            }
+            else if (msg=="back_small") 
+            {
+                sheetAngle-=1;
+                if (sheetAngle<-90) sheetAngle=-90;      
+            } 
+            else if (msg=="fwd_big") 
+            {
+                sheetAngle+=4;
+                if (sheetAngle>90) sheetAngle=90; 
+  
+            }
+            else if (msg=="back_big") 
+            {
+                sheetAngle-=4;
+                if (sheetAngle<-90) sheetAngle=-90;     
+            }
+
+            else if (msg=="reset") 
+            {//reset
+                lowerSail();
+                reset();
+                llResetScript();
+            }
+            else if (msg=="lower") 
+            {//lower without reset
+                lowerSail();
+            }
+             else if (msg=="raise")  
+             {//raise sail
+                raiseSail();
+            }
+            else
+            {
+                //update boat statistics based on updated boat orientation
+                list temp = llParseString2List(msg, [Delimiter], []);
+                if (llList2String(temp,0) ==  SetCurRot)
+                {
+                    list temp2 = llParseString2List(llList2String(temp,1), [" "], []);
+                    
+                    currRot.x = llList2Float(temp2,0);
+                    currRot.y = llList2Float(temp2,1);
+                    currRot.z = llList2Float(temp2,2);
+                    currRot.s = llList2Float(temp2,3);
+                    
+                    calcWindAngle();
+                    if (SAIL_UP) calcBoomDelta();
+                    calcHeelAngle();
+                    calcSpeed();
+                    calcLeeway();
+                    calcTurnRate();
+                    if (HUD_ON) updateHUD();
+                    dataString=(string)currSpeed+","+(string)leeway+","+(string)rotSpeed+","+(string)heelTorque;
+                    llMessageLinked(LINK_ROOT,CONTROLS_MODULE,dataString,NULL_KEY);
+                }
+            }
+        }   
+    }
+    
+    changed(integer change)
+    {
+
+    }
+
+}

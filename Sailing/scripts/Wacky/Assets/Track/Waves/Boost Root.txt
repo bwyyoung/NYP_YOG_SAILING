@@ -1,0 +1,70 @@
+//Boost Root Script
+//By Brian Young/Daijo Zenovka
+
+string Boost_Glow = "Boost_Glow";
+string Stop_Boost_Glow = "Stop_Boost_Glow";
+string Start_Boost_Glow = "Start_Boost_Glow";
+string Delimiter = "%$%^";
+string Delimiter2 = "@T!ME";
+
+integer Num_Gap = 4;
+integer Addition = 1;
+integer Max_Rows = 15;
+
+integer Current_Num = 0;
+
+float TimeLag = 1;
+default
+{
+    state_entry()
+    {
+       
+       llMessageLinked(LINK_SET, 0,Boost_Glow + Delimiter, NULL_KEY);
+    }
+    timer()
+    {
+        list TheGlows;
+        integer i;
+        //if (Current_Num > 0)
+       // {
+            i = 0;
+            while (Current_Num- Num_Gap*i >= 0)
+            {
+                TheGlows+= Current_Num - Num_Gap*i; 
+                i++;  
+            }            
+        //}
+        
+        i = 0;
+        while (Current_Num + Num_Gap*i < Max_Rows)
+        {
+            TheGlows+= Current_Num + Num_Gap*i; 
+            i++;  
+        }
+        llMessageLinked(LINK_SET, 0,Boost_Glow + Delimiter + llDumpList2String(TheGlows, Delimiter2 ), NULL_KEY);
+        
+        if (Current_Num + Addition <20)
+        {   
+            Current_Num+=Addition;
+        }
+        else
+        {
+            Current_Num = 0;
+        }
+    }
+    link_message(integer sender_num, integer num, string msg, key id)
+    {
+        if (msg == Start_Boost_Glow)
+        {
+            llSetTimerEvent(TimeLag);
+            llMessageLinked(LINK_SET, 0,Boost_Glow + Delimiter, NULL_KEY);
+        }
+        else if (msg == Stop_Boost_Glow)
+        {
+            llSetTimerEvent(0);
+            llMessageLinked(LINK_SET, 0,Boost_Glow + Delimiter, NULL_KEY);
+            
+        }
+    }
+ 
+}

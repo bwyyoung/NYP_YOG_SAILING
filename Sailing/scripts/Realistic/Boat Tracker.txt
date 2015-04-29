@@ -1,0 +1,827 @@
+//Boat Tracker  Script 
+//By Brian Young/Daijo Zenovka
+//Goes in root prim of Boat Tracker
+
+//Description: Takes care of the tracking of players during a race.
+
+integer point_Listener_handle;
+integer point_Activater_handle;
+integer point_Reset_handle;
+integer point_Data_handle;
+integer Registry_handle;
+integer Wacky_Handle;
+
+integer point_Listener = -300;
+integer point_Activater = -301;
+integer point_Reset = -302;
+integer point_Data = -303;
+integer Registry = -304;
+integer Olympic_Bracelet = -305;
+integer Boat_Channel = -306;
+
+integer Sailing_Scoreboard_Realistic = -307; 
+integer Sailing_Scoreboard_Wacky = -308; 
+integer Wacky_Channel = -309;
+
+integer Sax_Channel = -310;
+
+integer touch_times = 0;
+
+string _POINT_ = "Point";
+string _TURN_ = "Turn";
+string _STARTING_LINE_ = "Starting";
+string _FINISH_LINE_ = "Finish";
+
+string Open_Points =  "Open_Points";
+string Activate_Points = "Activate_Points";
+string Reset_Points = "Reset_Points";
+string Test_Points = "Test_Points";
+string Enable_Wacky = "Enable_Wacky";
+string Point_Collide = "Point_Collide";
+string Disqualify_Player = "Disqualify_Player";
+string New_Player = "New_Player";
+string Turn_Times = "Turn_Times";
+string Teleport_Avatar =  "Teleport_Avatar";
+string Play_Sound = "Play_Sound";
+
+string Delimiter = "%$%^";
+string Delimiter2 = "@T!ME";
+
+list Points_Names=[];
+list Turns_Names=[];
+
+list Points=[];
+list Turns=[]; //This is the turns
+
+list Players = []; //This is the list of players that are currently playing.
+list Players_Hit_Points = []; //This is the list of points that the player has hit
+
+integer Starting_Line=0;
+integer Finish_Line=0;
+integer Position = 0;
+float Time = 0;
+
+list End_Race_Position = [211,127,20,208,80,24];
+
+integer DEBUG = FALSE;
+integer Active= FALSE;
+integer Wacky_Mode = FALSE;
+
+
+integer Player_Stride=0;//the amount to cross to a new section for player
+integer Points_Stride = 0;//the amount of total points in the game 
+integer Turn_Stride = 0; //the amount of total turns in the game
+integer Finish_Stride = 0; //the amount of finishes
+integer Starting_Stride = 0;//the number of starting points
+integer Position_Stride = 1;
+integer Time_Stride = 1;
+
+integer Points_Pos=0;
+integer Turn_Pos=0;
+integer Finish_Pos=0;
+integer Start_Pos=0;
+integer Position_Pos = 0;
+integer Time_Pos = 0;
+
+integer CountDown=10;
+
+integer Total_Players=0;
+integer Finished_Players=0;
+
+integer CurrentCoolDown;
+integer CoolDown = 5;
+
+//Songs
+string Race_Theme = "race theme";
+string Race_Wacky_Theme = "race wacky theme";
+string Sailing_End = "sailing end";
+string Sailing_Start = "sailing start";
+string Sailing_Theme = "sailing theme";
+string Sailing_Wacky_Theme = "sailing wacky theme";
+
+//ORDER: Name, Starting, Finish, Pts, Turns
+
+Start_Race()
+{
+    llRegionSay(point_Activater,Open_Points);
+    Active = TRUE;
+    integer x;
+    CurrentCoolDown = 0;
+    llShout(0, "The Regatta has begun! ");
+    llResetTime();
+    llSetTimerEvent(0);
+    //llOwnerSay(llDumpList2String(Players," "));
+    if (Wacky_Mode)
+    {
+        llRegionSay(Sax_Channel,Play_Sound + Delimiter + Race_Wacky_Theme + Delimiter + (string)TRUE);
+    }
+    else
+    {
+        llRegionSay(Sax_Channel,Play_Sound + Delimiter + Race_Theme + Delimiter + (string)TRUE);
+    }
+}
+Reset_Race()
+{   
+  
+    llRegionSay(point_Reset,Reset_Points);
+    Active = FALSE;
+    llSetTimerEvent(0);
+     Total_Players=0;
+     Finished_Players=0;
+    llOwnerSay("Resetting Race");
+    
+    if (Wacky_Mode)
+    {
+        llRegionSay(Sax_Channel,Play_Sound + Delimiter + Sailing_Wacky_Theme + Delimiter + (string)TRUE);
+    }
+    else
+    {
+        llRegionSay(Sax_Channel,Play_Sound + Delimiter + Sailing_Theme + Delimiter + (string)TRUE);
+    }
+    
+    Points_Names=[];
+    Turns_Names=[];
+
+    Points=[];
+    Turns=[]; //This is the turns
+
+    Players = []; //This is the list of players that are currently playing.
+    Players_Hit_Points = []; //This is the list of points that the player has hit
+    
+    Position = 1;
+    Active= FALSE;
+
+
+    Player_Stride=0;//the amount to cross to a new section for player
+    Points_Stride = 0;//the amount of total points in the game 
+    Turn_Stride = 0; //the amount of total turns in the game
+    Finish_Stride = 0; //the amount of finishes
+    Starting_Stride = 0;//the number of starting points
+    Position_Stride = 1;
+    Time_Stride = 1;
+
+    Points_Pos=0;
+    Turn_Pos=0;
+    Finish_Pos=0;
+    Start_Pos=0;
+    Position_Pos = 0;
+    Time_Pos = 0;
+
+    CountDown=10;
+
+    Total_Players=0;
+    Finished_Players=0;
+    
+    llRegionSay(point_Activater,Test_Points);  
+    
+}
+NotificationCoolDown()
+{
+    llSetTimerEvent(1.0);
+    CountDown = -1;
+    CurrentCoolDown = CoolDown;
+}
+
+list ChangeListInt(list TheList, integer TheElementNum, integer TheNewValue)
+{
+    list temp; 
+    integer x;
+    integer y;
+    
+    for (x = 0; x<TheElementNum; x++)
+    {
+        temp+=llList2Integer(TheList, x);
+        //llOwnerSay("before "+llList2String(TheList, x));    
+    }
+    temp += TheNewValue; 
+    //llOwnerSay("during "+llList2String(TheList, TheElementNum)); 
+    for (y = TheElementNum + 1; y<llGetListLength(TheList) ; y++)
+    {
+        temp+=llList2Integer(TheList, y);    
+        //llOwnerSay("after "+llList2String(TheList, x)); 
+    }
+    
+    return temp;
+}
+ 
+default
+{
+    state_entry()
+    {
+        llSetText("Boat Tracker",<0.0, 1.0, 0.0>,1.0);
+        point_Listener_handle = llListen(point_Listener, "", NULL_KEY, "");
+        point_Activater_handle = llListen(point_Activater, "", NULL_KEY, "");
+        point_Reset_handle = llListen(point_Reset,"", NULL_KEY, "");
+        point_Data_handle = llListen(point_Data,"", NULL_KEY, "");
+        Registry_handle = llListen(Registry,"", NULL_KEY, "");
+        Wacky_Handle = llListen(Wacky_Channel,"", NULL_KEY, "");
+        
+    }
+    
+    touch(integer num)
+    {
+        if (llDetectedKey(0) ==  llGetOwner())
+        {
+            touch_times+=1;
+            if(touch_times%2 == 1)
+                Start_Race();
+            else
+                Reset_Race();
+        }
+    }
+    timer()
+    {
+        if (CurrentCoolDown > 0)
+            CurrentCoolDown --;
+        else if (CurrentCoolDown == 0)
+        {
+            
+            llSetTimerEvent(0);   
+        }
+        if (CountDown > 0)
+            CountDown--;
+        else if (CountDown==0)
+        {
+            Start_Race();
+            touch_times+=1;
+        }
+    }
+    listen( integer channel, string name, key id, string message )
+    {
+       // llOwnerSay("name: " + name +" Channel: "+(string)channel + " message: " +message);
+        if (channel == point_Listener)
+        {
+            list temp = llParseString2List(message, [" "], []);
+            if (llList2String(temp,0) == Test_Points)
+            {
+                if (llList2String(temp,1) == _POINT_)
+                {
+                    Points_Names+=[name];
+                    Points+=[FALSE];
+                    Player_Stride++;
+                    Points_Stride++;
+                }
+                else if (llList2String(temp,1) == _STARTING_LINE_)
+                {
+                    Starting_Line = FALSE;
+                    Starting_Stride++;
+                    
+                }
+                else if (llList2String(temp,1) == _FINISH_LINE_)
+                {
+                    Finish_Line = FALSE;
+    
+                    Finish_Stride++;
+                }
+                else if (llList2String(temp,1) == _TURN_)
+                {
+                    
+                }
+                    Start_Pos=Starting_Stride;
+                    Finish_Pos=Start_Pos+Finish_Stride;
+                    Points_Pos=Finish_Pos + 1;
+                    Turn_Pos=Points_Pos + Points_Stride;
+                    Position_Pos= Turn_Pos + Turn_Stride;
+                    Time_Pos =  Position_Pos + Position_Stride;
+                    Player_Stride= Time_Pos+Time_Stride;
+            //llOwnerSay("Player Stride       "+ (string )Player_Stride+ "Time pos"+ (string)Time_Pos);
+            }
+
+        }
+        else if (channel == point_Data)
+        {
+           
+           list temp = llParseString2List(message, [" "], []);
+           
+            if (llList2String(temp,0) == Turn_Times)
+            {
+                integer x = 0;
+                for (x = 0; x < llGetListLength(Turns_Names); x++)
+                {
+                    if (llList2String(Turns_Names,x) == name)
+                        jump fore;
+                }
+                @fore;
+                
+                if (x==llGetListLength(Turns_Names))
+                {
+                  Turns_Names+=[name];
+                  Turns+=[0];
+                  Turns = llListReplaceList(Turns,[llList2Integer(temp, 1)], x, x);
+                  Turn_Stride++;
+                }
+                Start_Pos=Starting_Stride;
+                Finish_Pos=Start_Pos+Finish_Stride;
+                Points_Pos=Finish_Pos + 1;
+                Turn_Pos=Points_Pos + Points_Stride;
+                Position_Pos= Turn_Pos + Turn_Stride;
+                Time_Pos =  Position_Pos + Position_Stride;
+                Player_Stride= Time_Pos+Time_Stride;
+                //llOwnerSay("Player Stride       "+ (string )Player_Stride + "Time pos"+ (string)Time_Pos);
+            }
+        } 
+        
+        if (Active == TRUE)
+        {
+            if (channel == point_Data)
+            {
+                list temp = llParseString2List(message, [Delimiter], []);
+                if (llList2String(temp,0)  == Disqualify_Player)
+                {
+                    string thePlayer = llList2String(temp,1);
+                    
+                    llShout(0,thePlayer + "  is Disqualified!");
+                    
+                    integer i;
+                    integer theIndex = -1;
+                    
+                    for (i = 0; i< llGetListLength(Players); i++)
+                    {
+                        if (thePlayer == llKey2Name(llList2Key(Players,i)))
+                        {
+                            theIndex = i;   
+                            
+                        }
+                        
+                    }
+                    if (theIndex != -1)
+                    {
+                        Players = llListReplaceList(Players,[], theIndex, theIndex + Time_Pos);
+                        Total_Players--;
+                        
+                        if (Total_Players <= 0)
+                        {
+                            llShout(0,"Race has ended prematurely.");   
+                            llRegionSay(Registry, Reset_Points);
+                        }
+                        if (DEBUG)
+                        llOwnerSay(llDumpList2String(Players, " > "));
+                        
+                    }
+                        
+                        
+                }
+                     
+            }
+            else if(channel == point_Listener)
+            {
+                
+                //this is the point saying the player has crossed
+                list Info = llParseString2List(message, [Delimiter], []);
+                string MessageType = llList2String(Info,0);
+                string PlayerName =llList2String(Info,2);
+                list TurnType = llParseString2List(llList2String(Info,1), [" "],[]);
+                list temp2;
+                integer Player_Pos=0;
+                integer IsPlayer =  FALSE;
+                
+                
+                integer a;
+                for (a = 0; a < llGetListLength(Players); a++)
+                {
+                    if(llKey2Name(llList2Key(Players,a))==PlayerName)
+                    {
+                       IsPlayer = TRUE;
+                       Player_Pos = a;
+                    }
+                }
+                
+                if (IsPlayer== TRUE)
+                {
+                    if (llList2String(TurnType,0) == _POINT_)
+                    {
+                        if (MessageType == Point_Collide)   
+                        {
+                            //llOwnerSat
+                            integer x;
+                            integer y;
+                            integer boolx = TRUE;
+                            integer booly= TRUE;
+                            integer CurrentElement;
+                            
+                            
+                            if (llList2Integer(Players,Player_Pos + Start_Pos) ==FALSE)
+                            {
+                                boolx = FALSE;   
+                            }
+                            for (x = 0; x < llGetListLength(Points_Names); x++)
+                            {
+                                temp2 = llParseString2List(llList2String(Points_Names,x), [" "], []);//point names
+                                //llOwnerSay((string)llDumpList2String(temp2,"  " ) +" "//+ (string)llList2Integer(TurnType,1)
+                                 //+ " compare "+(string)llList2Integer(Players,Player_Pos + Points_Pos + x)+" " + (string)x + " " + (string)llGetListLength(Points_Names));
+
+                                if (llList2Integer(temp2,1)<llList2Integer(TurnType,1))
+                                {
+                                    if (llList2Integer(Players,Player_Pos + Points_Pos + x) == FALSE)///llList2Integer(Points,x)
+                                    {
+                                       // llOwnerSay("Woooot");
+                                        boolx = FALSE;
+                                    }
+                                }
+                                else if (llList2Integer(temp2,1)==llList2Integer(TurnType,1))
+                                {
+                                    CurrentElement = x;   
+                                }
+//llOwnerSay("Turntype compare   "+(string)llList2Integer(temp2,1) + " "+ (string)llList2Integer(TurnType,1)+ " current index:   "+(string)(Player_Pos + Points_Pos + x) + "   " + (string)llList2Integer(Players,Player_Pos + Points_Pos + x) +  "        Boolx  "+ (string)boolx);
+                            }
+                            //llOwnerSay("check ok! "+ (string)x + " " +(string)llGetListLength(Points_Names));
+                            
+                            for (y = 0; y<llGetListLength(Turns_Names);y++)
+                            {
+                                temp2 = llParseString2List(llList2String(Turns_Names,y), [" "], []);
+                                if (llList2Integer(temp2,1)<llList2Integer(TurnType,1))
+                                {
+                                    if (llList2Integer(Players,Player_Pos + Turn_Pos + y) > 0)//llList2Integer(Turns,y)
+                                    {
+                                        booly = FALSE;
+                                    }
+                                }
+                                
+                            }
+                            if (boolx == FALSE)//invalid point player has touched
+                            {
+                                
+                                if (CurrentCoolDown ==0)        
+                                {
+                                    NotificationCoolDown();                    
+                                    llShout(0,llKey2Name(llList2Key(Players, Player_Pos))+" crossed an invalid point!");
+                                }
+
+                            }
+                            else if (booly == FALSE)
+                            {
+                                if (CurrentCoolDown ==0)     
+                                {
+                                    NotificationCoolDown();                   
+                                    llShout(0,llKey2Name(llList2Key(Players, Player_Pos))+" crossed an invalid turn!");
+                                }
+                            }
+                            else
+                            {
+                                //point is valid
+                                if (llList2Integer(Players,Player_Pos + Points_Pos + CurrentElement) != TRUE)
+                                {
+                                    llShout(0,llKey2Name(llList2Key(Players, Player_Pos))+" crossed "+llDumpList2String(TurnType," ") + "!" );
+                                    Players = llListReplaceList(Players,[TRUE],Player_Pos + Points_Pos + CurrentElement, Player_Pos + Points_Pos + CurrentElement);
+                                    if (DEBUG)
+                                        llOwnerSay("New Player Data "+llDumpList2String(Players,"   ") + " current position:: " + (string)(Player_Pos + Points_Pos + CurrentElement));
+                                }
+                            }
+                        }  
+                    }
+                    else if (llList2String(TurnType,0) == _STARTING_LINE_)
+                    {
+                        if (MessageType == Point_Collide)   
+                        {
+                            integer temp = Player_Pos + Start_Pos;
+                           // llOwnerSay("Changing start position "+(string)(temp));
+                            //llOwnerSay("Current Players List " + (string)llDumpList2String(Players,"   "));
+                            if (llList2Integer(Players,temp)!= TRUE)
+                            {
+                                
+                                llShout(0,llKey2Name(llList2Key(Players, Player_Pos))+" crossed "+llDumpList2String(TurnType," ") + "!" );
+                                Players = llListReplaceList(Players,[TRUE],temp,temp);
+                                if (DEBUG)
+                                    llOwnerSay("New Players List " + (string)llDumpList2String(Players,"   "));
+                               // llOwnerSay("Total players " + (string)Total_Players + " Finished Players  " + (string)Finished_Players); 
+                            }
+                        } 
+                    }
+                    else if (llList2String(TurnType,0) == _FINISH_LINE_)
+                    {
+                        if (MessageType == Point_Collide)
+                        {
+                            integer x;
+                            integer y;
+                            integer boolx = TRUE;
+                            integer booly= TRUE;
+                            //llOwnerSay("name: " + name +" Channel: "+(string)channel + " message: " +message);
+                            
+                            for (x = 0; x < llGetListLength(Points_Names); x++)
+                            {
+                                if (llList2Integer(Players,Player_Pos + Points_Pos + x) == FALSE)//llList2Integer(Points,x)
+                                {
+                                   boolx = FALSE;
+                                }
+                            }
+                            //llOwnerSay("check ok! "+ (string)x + " " +(string)llGetListLength(Points_Names));
+                            
+                            for (y = 0; y<llGetListLength(Turns_Names);y++)
+                            {
+                                if (llList2Integer(Players,Player_Pos + Turn_Pos + y) > 0)//llList2Integer(Turns,y)
+                                {
+                                    booly = FALSE;  
+                                }
+                            }
+                            
+                            if (boolx == FALSE)//invalid point player has touched
+                            {
+                                llShout(0,llKey2Name(llList2Key(Players, Player_Pos))+" crossed an invalid point!");
+                            }
+                            else if (booly == FALSE)
+                            {
+                                llShout(0,llKey2Name(llList2Key(Players, Player_Pos))+" crossed an invalid turn!");
+                            }
+                            else
+                            {
+                                float a = llGetTime();
+                                //llOwnerSay((string)llList2Float(Players, Player_Pos + Time_Pos));
+                                if (llList2Float(Players, Player_Pos + Time_Pos) == (float)0.00)
+                                {
+                                    if (llList2Integer(Players, Player_Pos + Finish_Pos) != TRUE)
+                                    {
+                                        //point is valid, race over
+                                        llShout(0,"Finished! " + llKey2Name(llList2Key(Players, Player_Pos)) +" is  placed: " + (string)Position + " Position with time " + (string)a + " seconds");
+                                        Players = llListReplaceList(Players,[TRUE],Player_Pos + Finish_Pos,Player_Pos + Finish_Pos);//Finish Line
+                                        Players = llListReplaceList(Players,[Position],Player_Pos + Position_Pos,Player_Pos + Position_Pos);//Placing
+                                        Players = llListReplaceList(Players,[a],Player_Pos + Time_Pos,Player_Pos + Time_Pos);//Time
+                                        Position++;
+                                        
+                                        //llRegionSay(Boat_Channel, Teleport_Avatar + Delimiter +
+                                        //llKey2Name(llList2Key(Players, Player_Pos)) + Delimiter +  
+                                        //(string)End_Race_Position.x + " " +  (string)End_Race_Position.y + " " +  (string)End_Race_Position.z);
+                                       string a = Teleport_Avatar + Delimiter + llKey2Name(llList2Key(Players, Player_Pos)) + Delimiter;
+                                       integer i;
+                                       for (i = 0; i< llGetListLength(End_Race_Position); i++)
+                                       {
+                                           a+=llList2String(End_Race_Position, i);
+                                           a+=" " ;
+                                           
+                                       }
+                                       llRegionSay(Boat_Channel,a);
+                                        
+                                        Finished_Players++;
+                                        if (DEBUG)
+                                        llOwnerSay("Finished Players " +  (string)Finished_Players + "  Total players   "+(string)Total_Players);
+                                        if (Finished_Players ==  Total_Players)
+                                        {
+                                            
+                                            llRegionSay(Sax_Channel,Play_Sound + Delimiter + Sailing_End + Delimiter + (string)FALSE);
+                                            llSleep(5.0);
+                                            integer i;
+                                            integer j;
+                                            integer Current_Pos = 1;
+                                            string Scoreboard = "";
+                                            list MatchedNames;
+                                            
+                                            for (i = 0; i < llGetListLength(Players); i+=Player_Stride)
+                                            {
+                                               // integer Matched = FALSE;
+                                               // for (j = 0; j < llGetListLength(MatchedNames); j++)
+                                             //   {
+                                             //       if (llList2Key(MatchedNames, j) == llList2Key(Players,i))
+                                              //          Matched = TRUE;
+                                             //   }
+                                                if (DEBUG)
+                                                llOwnerSay("length "+(string)llGetListLength(Players)+" "  +(string)i+" " +   "checking " + " " + (string)llList2Integer(Players, i + Position_Pos) +  "   "  +(string)Current_Pos);
+                                                if (llList2Integer(Players, i + Position_Pos) == Current_Pos )
+                                                {
+                                                    MatchedNames += llList2Key(Players,i);
+                                                    Scoreboard += (string)((key)llKey2Name(llList2Key(Players,i)));
+                                                    Scoreboard += Delimiter2;
+                                                    integer inttime = (integer)llList2Float(Players, i + Time_Pos);
+                                                   /// string time = (string)(inttime/60) + "m" + (string)(inttime%60) + "s";--->Do this in the scoreboard itself
+                                                    Scoreboard += (string)inttime;
+                                                    Scoreboard += Delimiter;
+                                                    Current_Pos++;
+                                                    i = -Player_Stride;
+                                                }
+                                            }
+                                           // llOwnerSay(Scoreboard);
+                                            if (DEBUG)
+                                            llOwnerSay("current wacky " + (string)Wacky_Mode);
+                                            if (Wacky_Mode)
+                                            {
+                                                llRegionSay(Sailing_Scoreboard_Wacky, Reset_Points +Delimiter+ Scoreboard);
+                                            }
+                                            else
+                                            {
+                                                llRegionSay(Sailing_Scoreboard_Realistic, Reset_Points +Delimiter+ Scoreboard);
+                                            }
+                                            llRegionSay(Registry, Reset_Points);
+                                        }
+                                    }
+                                }
+                                //now check if other players have crossed the finish line, if yes, end the race
+                                
+                            }
+                        } 
+                    }
+                    else if  (llList2String(TurnType,0) == _TURN_)
+                    {
+                        if (MessageType == Point_Collide)   
+                        {
+                            integer x;
+                            integer boolx = TRUE;
+                            integer boold= TRUE;
+                            integer CurrentElement;
+                            
+                            if (llList2Integer(Players, Player_Pos+ Start_Pos) ==FALSE)
+                            {
+                                boolx = FALSE;   
+                            }
+                            for (x = 0; x < llGetListLength(Points_Names); x++)//checking for points references
+                            {
+                                temp2 = llParseString2List(llList2String(Points_Names,x), [" "], []);
+                                // llOwnerSay((string)llList2Integer(temp2,1) +" "+ (string)llList2Integer(TurnType,1)
+                                // + " Point "+(string)llList2Integer(Points,x) +" " + (string)x + " " + 
+                                // (string)llGetListLength(Points_Names));
+                                if (llList2Integer(temp2,1)<llList2Integer(TurnType,1))
+                                {
+                                    if (llList2Integer(Players,Player_Pos + Points_Pos + x) == FALSE)//llList2Integer(Points,x)
+                                    {
+                                         boolx = FALSE;
+                                    }
+                                }
+        
+                            }
+                            integer z;
+                            for (z = 0; z<llGetListLength(Turns_Names);z++)
+                            {
+                                temp2 = llParseString2List(llList2String(Turns_Names,z), [" "], []);
+                                if (llList2Integer(temp2,1)==llList2Integer(TurnType,1))
+                                {
+                                    CurrentElement = z;   
+                                }
+                            }
+                            
+                            integer d;
+                            integer FALSE2 = 2;
+                            for (d = 0; d<llGetListLength(Turns_Names);d++)
+                            {
+                                //llOwnerSay("d length "+ (string)d);
+                                if (d!= CurrentElement)
+                                {
+                                    temp2 = llParseString2List(llList2String(Turns_Names,d), [" "], []);
+
+                                    if (llList2Integer(temp2,1)-1==llList2Integer(TurnType,1))//Index greater than current
+                                    {
+
+                                        if (llList2Integer(Players,Player_Pos + Turn_Pos + d)!= 
+                                            llList2Integer(Players,Player_Pos + Turn_Pos + CurrentElement))
+                                        {
+                                            boold = FALSE;
+                                        }
+                                    }
+                                    else if (llList2Integer(temp2,1)+1==llList2Integer(TurnType,1))//Index less than current
+                                    {
+                                        if (llList2Integer(Players,Player_Pos + Turn_Pos + d) + 1 != 
+                                            llList2Integer(Players,Player_Pos + Turn_Pos + CurrentElement))
+                                        {
+                                             boold = FALSE;  
+                                        }
+                                    }
+                                }
+        
+                            }                
+                            //TODO: Find way to prevent these shouts from repeating
+                            if (boolx ==FALSE)//invalid point player has touched
+                            {
+                                if (CurrentCoolDown ==0)        
+                                {
+                                    NotificationCoolDown();   
+                                    llShout(0,llKey2Name(llList2Key(Players, Player_Pos))+" crossed an invalid point!");
+                                }
+                            }
+                            else if (boold ==FALSE)
+                            {
+                                if (CurrentCoolDown ==0)        
+                                {
+                                    NotificationCoolDown();   
+                                llShout(0,llKey2Name(llList2Key(Players, Player_Pos))+" crossed an invalid turn!");
+                                }
+                            }
+                            else
+                            {
+                                //point is valid
+                                
+                                if (llList2Integer(Players,Player_Pos + Turn_Pos + CurrentElement)>0)
+                                {
+                                    if (CurrentCoolDown ==0)        
+                                    {
+                                            NotificationCoolDown();   
+                                        llShout(0,llKey2Name(llList2Key(Players, Player_Pos))+" crossed "+llDumpList2String(TurnType," ") + "!" );
+                                        Players = llListReplaceList(Players,[llList2Integer(Players,Player_Pos + Turn_Pos + CurrentElement)-1],Player_Pos + Turn_Pos + CurrentElement,Player_Pos + Turn_Pos + CurrentElement);
+                                        //(Turns,CurrentElement,llList2Integer(Turns,CurrentElement)-1);
+                                        if (DEBUG)
+                                            llOwnerSay("New Player Data "+llDumpList2String(Players,"   ") + " current position:: " + (string)(Player_Pos + Turn_Pos + CurrentElement));
+                                    }
+
+                                }
+                                
+                            }
+                            if (DEBUG)
+                            for (d = 0; d<llGetListLength(Turns_Names);d++)
+                            {
+                                llOwnerSay((string)llList2String(Turns_Names,d)+" " +(string)llList2Integer(Players,Player_Pos + Turn_Pos + d));//(Turns,d)) ;   
+                            } 
+                        }
+                    }
+                }
+               // if (DEBUG)
+                    string b;
+                    integer i;
+                    for (i = 0; i< llGetListLength(Players); i++)
+                    {
+                        if (i%Player_Stride == 0)
+                        {
+                            b+= llKey2Name(llList2Key(Players,i));
+                            
+                        }
+                        else
+                            b+= llList2String(Players,i);   
+                        b+= "    ";
+                        //llOwnerSay(b + " " + (string)Player_Stride  +" "+  (string)i);
+                    }
+                    if (DEBUG)
+                    {
+                        llOwnerSay(b);
+                        llOwnerSay(llDumpList2String(Points_Names,"      "));
+                    }
+            }   
+            else if (channel == Registry)
+            {
+                list temp = llParseString2List(message, [Delimiter], []);
+                if (llList2String(temp,0) == Reset_Points)
+                {
+                    Reset_Race();
+                    touch_times+=1;
+                }
+            }
+
+        }
+        else if (Active == FALSE)
+        {
+            if (channel == Registry)
+            {
+                if (DEBUG)
+                    llOwnerSay("Registry");
+                list temp = llParseString2List(message, [Delimiter], []);
+                if (llList2String(temp,0) == Activate_Points)
+                {
+                    llRegionSay(Sax_Channel,Play_Sound + Delimiter + Sailing_Start + Delimiter + (string)FALSE);
+                    llShout(0, "The Regatta will begin in " + (string)CountDown + " seconds" );
+                    CurrentCoolDown = -1;
+                    llSetTimerEvent(1.0);
+                    llRegionSay(point_Activater, Activate_Points);
+                }
+                else if (llList2String(temp,0) == New_Player)
+                { 
+                    integer New = TRUE;
+                    integer x;
+                    string player = llList2String(temp,1); 
+                  
+                    for(x = 0; x < llGetListLength(Players); x++)
+                    {
+                        if (player == llList2String(Players,x))
+                            New= FALSE;
+                    } 
+                    if (New == TRUE)
+                    {
+                        llOwnerSay("New registrant: " + player);
+                        Players+=[player];
+                        Players+=Starting_Line;
+                        Players+=Finish_Line;
+                        if (DEBUG){
+                            llOwnerSay("Points   "+llDumpList2String(Points, "   "));
+                            llOwnerSay("Turns   "+llDumpList2String(Turns, "   "));
+                        }
+                        for (x = 0; x < llGetListLength(Points); x++)
+                        {
+                            Players +=llList2Integer(Points,x);
+                        }
+                        for (x = 0; x < llGetListLength(Turns); x++)
+                        {
+                            Players +=llList2Integer(Turns,x);
+                        }   
+                    }
+                    Players+=Position;
+                    Players+=Time;
+                    Total_Players++;
+                   // llOwnerSay(llDumpList2String(Players, " , "));
+                }
+                else if (llList2String(temp,0) == Reset_Points)
+                {
+                    Reset_Race();
+                    touch_times+=1;
+                }
+                if (DEBUG)
+                    llOwnerSay(llDumpList2String(Players,"   "));
+            }
+            else if (channel == Wacky_Channel)
+            {
+                //llOwnerSay(message);
+                list temp = llParseString2List(message, [Delimiter], []);
+                if (llList2String(temp, 0) == Enable_Wacky)
+                {
+                   Wacky_Mode = llList2Integer(temp, 1);
+                   Reset_Race(); 
+                }
+                
+            }
+            
+           
+        }
+    }
+    
+}

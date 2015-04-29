@@ -1,0 +1,160 @@
+//Fire Laser(Wacky) Script
+//By Brian Young/Daijo Zenovka
+//Belongs to primitive 'FireBreath' of child of Boat
+
+//This script controls particle emissions that resemble flames from the boat. It is based on the script used to control the fire breathing merlion’s fire. There may be several of these scripts depending on the number of particle emitters on each boat.
+
+// Mask Flags - set to TRUE to enable
+integer glow = TRUE;            // Make the particles glow
+integer bounce = FALSE;          // Make particles bounce on Z plane of object
+integer interpColor = TRUE;     // Go from start to end color
+integer interpSize = TRUE;      // Go from start to end size
+integer wind = FALSE;           // Particles effected by wind
+integer followSource = TRUE;    // Particles follow the source
+integer followVel = TRUE;       // Particles turn to velocity direction
+
+// Choose a pattern from the following:
+// PSYS_SRC_PATTERN_EXPLODE
+// PSYS_SRC_PATTERN_DROP
+// PSYS_SRC_PATTERN_ANGLE_CONE_EMPTY
+// PSYS_SRC_PATTERN_ANGLE_CONE
+// PSYS_SRC_PATTERN_ANGLE
+integer pattern =  PSYS_SRC_PATTERN_ANGLE_CONE;
+
+// Select a target for particles to go towards
+// "" for no target, "owner" will follow object owner 
+//    and "self" will target this object
+//    or put the key of an object for particles to go to
+key target = "";
+
+
+
+integer flags;
+list sys;
+integer type;
+vector tempVector;
+rotation tempRot;
+string tempString;
+integer i;
+
+// Script variables
+integer pre = 2;          //Adjust the precision of the generated list.  
+   
+
+
+string Speed_Boost = "Speed_Boost";
+
+string Delimiter = "%$%^";
+
+integer IsWacky = FALSE;
+
+
+
+string float2String(float in)
+{
+    return llGetSubString((string)in,0,pre - 7);
+}
+
+updateParticles(integer SetWacky)
+{
+        
+    if (SetWacky)
+    {
+                llParticleSystem([]);    
+        // Particle paramaters
+        float age =1;                  // Life of each particle
+        float maxSpeed = 5;            // Max speed each particle is spit out at
+        float minSpeed = 2;            // Min speed each particle is spit out at
+        string texture = "";                 // Texture used for particles, default used if blank
+        float startAlpha = 1;           // Start alpha (transparency) value
+        float endAlpha = 0;           // End alpha (transparency) value
+        vector startColor = <0.0313,0,1>;    // Start color of particles <R,G,B>
+        vector endColor = <0.1,0.1,0.1>;      // End color of particles <R,G,B> (if interpColor == TRUE)
+        vector startSize = <0.3,0.3,0.3>;     // Start size of particles 
+        vector endSize = <0.2,0.2,0.2>;       // End size of particles (if interpSize == TRUE)
+        vector push = <0,0,0>;          // Force pushed on particles
+        
+        // System paramaters
+        float rate = 0.1;            // How fast (rate) to emit particles
+        float radius = 2;          // Radius to emit particles for BURST pattern
+        integer count = 100;        // How many particles to emit per BURST 
+        float outerAngle = 0.2;    // Outer angle for all ANGLE patterns
+        float innerAngle = 0;    // Inner angle for all ANGLE patterns
+        vector omega = <0,0,0>;    // Rotation of ANGLE patterns around the source
+        float life = 0;             // Life in seconds for the system to make particles
+         
+   
+        
+        flags = 0;
+        if (target == "owner") target = llGetOwner();
+        if (target == "self") target = llGetKey();
+        if (glow) flags = flags | PSYS_PART_EMISSIVE_MASK;
+        if (bounce) flags = flags | PSYS_PART_BOUNCE_MASK;
+        if (interpColor) flags = flags | PSYS_PART_INTERP_COLOR_MASK;
+        if (interpSize) flags = flags | PSYS_PART_INTERP_SCALE_MASK;
+        if (wind) flags = flags | PSYS_PART_WIND_MASK;
+        if (followSource) flags = flags | PSYS_PART_FOLLOW_SRC_MASK;
+        if (followVel) flags = flags | PSYS_PART_FOLLOW_VELOCITY_MASK;
+        if (target != "") flags = flags | PSYS_PART_TARGET_POS_MASK;
+        sys = [  PSYS_PART_MAX_AGE,age,
+                            PSYS_PART_FLAGS,flags,
+                            PSYS_PART_START_COLOR, startColor,
+                            PSYS_PART_END_COLOR, endColor,
+                            PSYS_PART_START_SCALE,startSize,
+                            PSYS_PART_END_SCALE,endSize, 
+                            PSYS_SRC_PATTERN, pattern,
+                            PSYS_SRC_BURST_RATE,rate,
+                            PSYS_SRC_ACCEL, push,
+                            PSYS_SRC_BURST_PART_COUNT,count,
+                            PSYS_SRC_BURST_RADIUS,radius,
+                            PSYS_SRC_BURST_SPEED_MIN,minSpeed,
+                            PSYS_SRC_BURST_SPEED_MAX,maxSpeed,
+                            PSYS_SRC_TARGET_KEY,target,
+                            PSYS_SRC_ANGLE_BEGIN,innerAngle, 
+                            PSYS_SRC_ANGLE_END,outerAngle,
+                            PSYS_SRC_OMEGA, omega,
+                            PSYS_SRC_MAX_AGE, life,
+                            PSYS_SRC_TEXTURE, texture,
+                            PSYS_PART_START_ALPHA, startAlpha,
+                            PSYS_PART_END_ALPHA, endAlpha
+                                ];
+                                
+        llSetAlpha(1,ALL_SIDES); 
+                                
+        llParticleSystem(sys);
+                 
+        llSetLinkPrimitiveParams(LINK_THIS, [25, ALL_SIDES, 1]);    
+    }
+    else
+    {
+        llSetAlpha(0,ALL_SIDES); 
+        llParticleSystem([]);    
+        llSetLinkPrimitiveParams(LINK_THIS, [25, ALL_SIDES, 0]); 
+           
+    }   
+}
+
+default
+{
+    state_entry()
+    {
+        llParticleSystem([]);
+        updateParticles(IsWacky);
+    }
+    link_message(integer sender_num, integer num, string msg, key id) 
+    {
+            list temp = llParseString2List(msg, [Delimiter], []);   
+            
+            if (llList2String(temp,0) == Speed_Boost)
+            {
+                if (IsWacky == FALSE &&llList2Integer(temp,1) == TRUE)
+                    llPlaySound("Rocket_Away", 1);
+                IsWacky = llList2Integer(temp,1);
+                
+                
+                updateParticles(IsWacky);
+            }
+    }
+    
+   
+}

@@ -1,0 +1,508 @@
+//Computer Email Script 
+//By Brian Young/Daijo Zenovka
+//Goes in root prim of Computer
+
+//This is a combination of:
+//the Registration Script by Derek Toh and 
+//the Email Script by Brian Young
+
+
+//&&&&&&&&&&&&&&&&&&&&&&&& Registration Variables &&&&&&&&&&&&&&&&&&&&&&&&
+list name_list;
+
+
+
+//&&&&&&&&&&&&&&&&&&&&&&&& Email Variables &&&&&&&&&&&&&&&&&&&&&&&&
+string Add_Point_User = "Add_Point_User"; // this is to add a new user to the computers
+string Update_Point_User = "Update_Point_User";
+string Update_Point_User_String = "Update_Point_User_String";
+string Add_Email_Member = "Add__Email_Member"; //send new member EMAIL data from server Email Bank to computers
+string Update_Email_Member = "Update_Email_Member";
+
+
+
+list email_list;  //local email list, it gets updated from the server based on new registrants
+
+string MainSubject = "Second Life: Youth Olympic Games";
+
+integer Registration_Channel = -313;
+
+string Set_Points = "Set_Points"; //set member points to server from computers
+
+
+
+string Update_Points = "Update_Points"; //server sends new point data to you
+
+integer DataBlockSize = 4;
+
+string Delimiter = "%$";
+
+list TheEvents = ["Event Sailing"   ,2,"Robert's Sailing"    ,"bwyyoung@hotmail.com",10,"This is Robert's Sailing \nContact No: 123456789 ","James's Sailing","bwyyoung@hotmail.com",0,"This is James Sailing",
+                  "Event Fencing"   ,1,"James's Fencing"     ,"bwyyoung@hotmail.com",0,"This is James Fencing",
+                  "Event BMX"       ,1,"Jack's BMX"          ,"bwyyoung@hotmail.com",0,"This is Jack's BMX",
+                  "Event Equestrian",1,"James's horse riding","bwyyoung@hotmail.com",0,"This is James horse riding"];
+                  
+
+list CourseTrialClientMessage = ["Dear","While participating in virtual games for YOG, a player named" ,"has earned a course in your company/institution", "Please take note of his avatar name and key. He or she will bring a printout of it to your centre as proof of identity."];
+
+list CourseTrialAvatarMessage = ["Dear","While participating in virtual games for YOG, you have earned course in" ,"at the cost of","Please take note of your avatar name and key. You must bring a printout of this message as proof of identity to the centre."];
+
+list EndMessages = ["Sincerely", "Yours Faithfully"];
+string PS = "This is a computer generated message. No signature is required.";
+
+
+
+integer ComDialog_Channel = -370; //need to change for each computer to run alone
+
+integer Active = TRUE;
+integer DEBUG = TRUE;
+
+string CurrentStatus = "CurrentStatus";
+string DeleteEmail = "DeleteEmail";
+
+string Sport = "Sport";
+string Client = "Client";
+string OK = "OK";
+string Cancel = "Cancel";
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////      EMAIL FUNCTIONS 
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+SendEmail(string Address, string Subject, string Message)
+{
+
+    llEmail(Address, Subject,Message);
+    llSay(0, "Mail sent.");
+
+}
+DisplayClasses(key AvatarKey)
+{
+    list TheClasses;
+        //list TheEvents = ["Event Sailing"   ,2,"Robert's Sailing"    ,"bwyyoung@hotmail.com",0,"This is Robert's Sailing","James's Sailing","bwyyoung@hotmail.com",0,"This is James Sailing",
+                 // "Event Fencing"   ,1,"James's Fencing"     ,"bwyyoung@hotmail.com",0,"This is James Fencing",
+                  //"Event BMX"       ,1,"Jack's BMX"          ,"bwyyoung@hotmail.com",0,"This is Jack's BMX",
+                  //"Event Equestrian",1,"James's horse riding","bwyyoung@hotmail.com",0,"This is James horse riding"];
+    integer i; 
+    string Description = "Please choose a sport.   ";
+    integer j = 1;
+
+    Description+="\n";
+    
+    for (i = 0; i< llGetListLength(TheEvents); i++)// retrieve course types here
+    {
+        
+        list temp = llParseString2List(llList2String(TheEvents, i), [" "], []);
+        
+        if (llList2String(temp,0) == "Event")
+        {
+            string DisplayIndex =  (string)(j);
+            Description+= " | ";
+            Description+= DisplayIndex;
+            Description+= "---> ";
+            Description+=   llList2String(temp,1) + " | ";
+            Description+="\n";
+            integer k;
+            string Spacing;
+            integer SN = 24-llStringLength(Sport+" "+DisplayIndex + Delimiter + (string)i);
+
+            if (SN>=0)
+            {
+                for (k = 0; k < SN; k++)
+                {
+                    Spacing+=" ";    
+                       
+                }   
+            }
+            TheClasses += Sport+" "+DisplayIndex +Spacing+ Delimiter + (string)i;
+            j++;
+            
+            
+        }
+    }    
+    
+    llDialog(AvatarKey, Description, order_buttons(TheClasses),ComDialog_Channel);
+}
+DisplayClients(integer TheClassIndex, key AvatarKey)
+{
+    list TheClients;
+    integer j;     
+    //DataBlockSize
+    string Description = "Please choose a client, or click 'Sports' to return to the previous menu.\n   ";
+    list temp = llParseString2List(llList2String(TheEvents, TheClassIndex), [" "], []);
+    if (llList2String(temp,0) == "Event")
+    {
+        integer numClientIndex = TheClassIndex + 1;
+        
+        integer numClients = llList2Integer(TheEvents, numClientIndex);
+        Description+="\n";
+        for (j = 0; j< numClients; j++)
+        {
+             string DisplayIndex =  (string)(j + 1);
+            Description+= " | ";
+            Description+= DisplayIndex;
+            Description+= "---> ";
+            Description+= llList2String(TheEvents, numClientIndex + 1 + j*DataBlockSize)+ " | ";
+            Description+="\n";
+            
+            integer k;
+            string Spacing;
+            integer SN = 24-llStringLength(Client+" " + DisplayIndex + Delimiter + (string)(numClientIndex + 1 + j*DataBlockSize)  + Delimiter + (string)TheClassIndex);
+            if (SN>=0)
+            {
+                for (k = 0; k < SN; k++)
+                {
+                    Spacing+=" ";    
+                       
+                }   
+            }
+
+            TheClients += Client+" " + DisplayIndex  + Spacing + Delimiter + (string)(numClientIndex + 1 + j*DataBlockSize)  + Delimiter + (string)TheClassIndex;
+        }
+        TheClients+="Sports";
+        llDialog(AvatarKey, Description,TheClients,ComDialog_Channel);
+    }
+  
+}
+DisplayClientData(integer ClassIndex, integer TheClientIndex, key AvatarKey)
+{
+    list Selection;
+    integer j;     
+    //DataBlockSize
+    
+    string Description = llList2String(TheEvents,TheClientIndex) +": "+llList2String(TheEvents,TheClientIndex + 3);
+
+    integer curpoints = GetCurrentPoints(llKey2Name(AvatarKey));
+    integer reqpoints = llList2Integer(TheEvents,TheClientIndex + 2);
+
+    
+    integer k;
+    string Spacing = "";
+    integer SN = 24-llStringLength( OK   + Delimiter + (string)ClassIndex + Delimiter + (string)TheClientIndex+ Delimiter + (string)reqpoints);
+    if (SN>=0)
+    {
+        for (k = 0; k < SN; k++)
+        {
+            Spacing+=" ";    
+                           
+        }   
+    }
+                           
+    string curOK = OK  + Spacing  + Delimiter + (string)ClassIndex + Delimiter + (string)TheClientIndex+ Delimiter + (string)reqpoints;
+
+    Spacing = "";
+    SN = 24-llStringLength(  Cancel  + Delimiter + (string)TheClientIndex + Delimiter + (string)ClassIndex);
+    if (SN>=0)
+    {
+        for (k = 0; k < SN; k++)
+        {
+            Spacing+=" ";    
+                           
+        }   
+    }
+    string curCancel  = Cancel + Spacing  + Delimiter + (string)TheClientIndex + Delimiter + (string)ClassIndex;        
+    Description+="\n";
+    Description += "The trial costs " + (string)reqpoints + " YOG Points.\n You currently have " + (string)curpoints + " YOG Points. ";
+    Description+="\n";
+    if (reqpoints>curpoints)
+    {
+        Description += "You may not purchase this course.";
+    }
+    else
+    {
+        Description += "You may purchase this course.";
+        Selection += curOK;
+    }
+    
+    Selection+=curCancel;
+    llDialog(AvatarKey,Description ,Selection, ComDialog_Channel);
+}
+
+ApproveCourse(integer ClassIndex, integer TheClientIndex, key AvatarKey, integer cost)
+{
+    string message;
+    string clientaddress = llList2String(TheEvents, TheClientIndex+1) ;
+    string avataraddress = llList2String(email_list,llListFindList(email_list, [llKey2Name(AvatarKey)])+1);
+    string subject =MainSubject;
+    
+    message+=llList2String(CourseTrialClientMessage, 0) +" "+ llList2String(TheEvents, TheClientIndex) + ",";//"Dear" +  theclient name
+    message +="\n\n";
+    message+= llList2String(CourseTrialClientMessage, 1) + " " + llKey2Name(AvatarKey) + "("+(string)AvatarKey+")"+" "+ llList2String(CourseTrialClientMessage, 2) +". " +llList2String(CourseTrialClientMessage, 3);
+    
+    message +="\n\n";
+    message +=llList2String(EndMessages, 0);
+    message +="\n\n";
+    message += MainSubject;
+    message +="\n\n";
+    message += PS;
+    
+    
+    llSay(0, "Sending mail to client now, please wait 20 seconds");
+    update_list(llKey2Name(AvatarKey),(string)(-cost));
+    llRegionSay(Registration_Channel,Set_Points + Delimiter + (string)AvatarKey + Delimiter + (string)(-cost) + Delimiter + (string)ComDialog_Channel);
+    SendEmail(clientaddress, subject, message);    
+
+
+
+    message = "";
+    message+=llList2String(CourseTrialClientMessage, 0) +" "+  llKey2Name(AvatarKey) + "("+(string)AvatarKey+")"+ ",";
+    message+="\n\n";
+    message+= llList2String(CourseTrialAvatarMessage, 1);
+    message+= " " + llList2String(TheEvents, TheClientIndex) + "(" + llList2String(TheEvents, ClassIndex)+ ") "; 
+    message+= llList2String(CourseTrialAvatarMessage, 2) + " " + (string)cost + " YOG Points. \n\nYour balance is " +(string)GetCurrentPoints(llKey2Name(AvatarKey)) + " YOG Points.\n\n";
+    message+=llList2String(CourseTrialAvatarMessage, 3);
+    message+="\n\n";
+    message +=llList2String(EndMessages, 1);
+    message +="\n\n";
+    message += MainSubject;    
+    message +="\n\n";
+    message += PS;
+    llSay(0, "Sending mail to contestant now, please wait 20 seconds");
+    SendEmail(avataraddress, subject, message);    
+} 
+
+
+list order_buttons(list buttons)//from llDialog Second Life wiki
+{
+    return llList2List(buttons, -3, -1) + llList2List(buttons, -6, -4)
+         + llList2List(buttons, -9, -7) + llList2List(buttons, -12, -10);
+}
+ShowResult(integer TheClassIndex, integer TheClientIndex,integer ReqPoints, key AvatarKey)
+{
+    string Description  = "\nThank you for paying " + (string)ReqPoints + " YOG Points for " + llList2String(TheEvents, TheClientIndex) + "("+llList2String(TheEvents, TheClassIndex)+"). \nYour balance is " + (string)GetCurrentPoints((string)AvatarKey) + " YOG Points.";
+
+    list Selection = ["Close"];
+    
+    llDialog(AvatarKey,Description ,Selection, ComDialog_Channel);
+    
+}
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////      END OF EMAIL FUNCTIONS 
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////      REGISTRATION FUNCTIONS 
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+integer GetCurrentPoints(string TheAvatar)
+{
+    //Show the player how much points that the player currently have
+    integer temp = llListFindList(name_list, [TheAvatar]);                   //First, Find the location of the avatar on the list
+    list temp_list = llList2List(name_list, temp - 1, temp - 1);        //Second, -1 from the location of the avatar name to get the point value
+                                                                                    //since that the foramt is <points, name>.  
+                                                                                      
+    integer current_points = (integer)llDumpList2String(temp_list, ",");//convert the value of points from string to integer. Doing it this way
+                                                                                    //is because I do not know of any other way 
+    return current_points;
+}
+
+list ListStridedUpdate(list dest, list src, integer start, integer end, integer stride) //This function is taken from the second life wiki
+{
+    return llListReplaceList(dest, src, start * stride, ((end + 1) * stride) - 1 );
+}
+
+integer update_list(string name, string point)
+{
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    //This Whole "Function" is to update points where new points are added into the current points that the avatar has
+    //This is temporary placed here.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            
+    integer temp = llListFindList(name_list, [name]); //First, Find the location of the avatar on the list
+    list temp_list = llList2List(name_list, temp - 1, temp - 1);    //Second, -1 from the location of the name of avatar to get the points value
+                                                                    //since that the format is <points, name>.    
+    integer current_points = (integer)llDumpList2String(temp_list, ",");//convert the value of points from string to integer. Doing it this way
+                                                                        //is because I do not know of any other way    
+    integer final_new_points = current_points + (integer)point; // Add the current points and new points together.
+    
+    name_list = ListStridedUpdate   (   name_list,  //The list for the replacement of value
+                                        [final_new_points],//Replace the old points with the new updated points.
+                                        (llListFindList(name_list, [name])) - 1,//starting position of list to replace with
+                                        (llListFindList(name_list, [name])) - 1, //ending position of list to replace with
+                                        1 // Since I'm using <points, name>, 1 would be enough. It seems redundant but use it just in case first.
+                                    );
+    
+    return 0;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////      END OF REGISTRATION FUNCTIONS 
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+default
+{
+    state_entry()
+    {
+        //***********************Email Entry Values***********************
+        llListen(ComDialog_Channel,"",NULL_KEY,"");
+        llListen(Registration_Channel,"",NULL_KEY,"");
+    }
+
+    touch_start(integer total_number)
+    {
+        if (llDetectedKey(0) == llGetOwner() && ~llListFindList(name_list, [llKey2Name(llDetectedKey(0))]))
+        {
+            //intro menu
+            update_list(llKey2Name(llDetectedKey(0)),"70");//temporary debug
+            llRegionSay(Registration_Channel,Set_Points + Delimiter + (string)llDetectedKey(0) + Delimiter + (string)(70) + Delimiter + (string)ComDialog_Channel);
+        }
+        else
+        {
+            
+            
+        }
+
+        if (~llListFindList(email_list, [llKey2Name(llDetectedKey(0))]))
+        {
+            DisplayClasses(llDetectedKey(0));   
+        }
+        else
+        {
+            llInstantMessage(llDetectedKey(0) , llKey2Name(llDetectedKey(0)) + ", you need to register an email first in order to use the computer.");
+            
+        }
+        
+    }
+    listen(integer channel, string name, key id, string message) 
+    {
+        ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+        //////      EMAIL FUNCTIONS 
+        ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+       if (channel == Registration_Channel)
+       {
+           list temp = llParseString2List(message, [Delimiter], []); //check with space separations
+           if (llList2String(temp,0) ==Update_Point_User) // from reg central
+           {
+               integer theComChannel = llList2Integer(temp,3);
+               if (theComChannel != ComDialog_Channel)//ensure that no 2 coms are confused
+               {
+                    key id = llList2Key(temp, 1);
+                    integer NewPoints = llList2Integer(temp,2);
+                    if (~llListFindList(name_list, [llKey2Name(id)]))// if the avatar is already registered, do the following
+                    {
+                         update_list(llKey2Name(id),(string)NewPoints); //update local scores
+                    }
+                    else
+                    {
+                        llOwnerSay("ERROR: NO SUCH NAME IN DATABASE ~ Update_Point_User");  
+                    }
+                   
+               }
+           }
+           else if (llList2String(temp,0) ==Update_Point_User_String) // from reg central
+           {
+               integer theComChannel = llList2Integer(temp,3);
+               if (theComChannel != ComDialog_Channel)//ensure that no 2 coms are confused
+               {
+                    string id = llList2String(temp, 1);
+                    integer NewPoints = llList2Integer(temp,2);
+                    if (~llListFindList(name_list, [id]))// if the avatar is already registered, do the following
+                    {
+                         update_list(llKey2Name(id),(string)NewPoints); //update local scores
+                    }
+                    else
+                    {
+                        llOwnerSay("ERROR: NO SUCH NAME IN DATABASE ~ Update_Point_User_String");  
+                    }
+                   
+               }
+           }
+           else if (llList2String(temp,0) ==Add_Point_User) // from reg central
+           {
+                key id = llList2Key(temp, 1);
+                if (!~llListFindList(name_list, [llKey2Name(id)]))
+                {
+                    name_list = name_list + ["0"] + [llKey2Name(id)]; //Add Avatar into the register list and give it a initial point value of 0 
+                }
+                else
+                {
+                    llOwnerSay("ERROR: NAME ALREADY EXISTS IN DATABASE ~ Add_Point_User"); 
+                }               
+           }
+           else if (llList2String(temp,0) ==Add_Email_Member) // from email bank
+           {
+                key id = llList2Key(temp, 1);
+                string message = llList2String(temp,2);
+                if (!~llListFindList(email_list, [llKey2Name(id)]))
+                {
+                    email_list+= llKey2Name(id);
+                    email_list+= message;
+                }
+                else
+                {
+                     llOwnerSay("ERROR: EMAIL ALREADY EXISTS IN DATABASE ~ Add_Email_Member"); 
+                }
+           }
+           else if (llList2String(temp,0) ==Update_Email_Member) // from email bank
+           {
+                key id = llList2Key(temp, 1);
+                string message = llList2String(temp,2);
+                integer index = llListFindList(email_list, [llKey2Name(id)]);
+                if (index != -1)
+                {
+                    email_list = llListReplaceList(email_list, [message],index + 1,index + 1);
+                }
+                else
+                {
+                       
+                    llOwnerSay("ERROR: NO SUCH NAME IN DATABASE ~ Update_Email_Member");  
+                }
+           }
+           if (DEBUG)
+           {
+                llOwnerSay("Points "+ llDumpList2String(name_list, " , "));
+                llOwnerSay("Emails "+ llDumpList2String(email_list," , "));
+           }
+       } 
+       else if (channel == ComDialog_Channel)
+        {
+//list TheEvents = ["Sailing"   ,2,"Robert's Sailing"    ,"bwyyoung@hotmail.com",0,"This is Robert's Sailing","James's Sailing","bwyyoung@hotmail.com",0,"This is James Sailing", "Fencing"   ,1,"James's Fencing"     ,"bwyyoung@hotmail.com",0,"This is James Fencing","BMX"       ,1,"Jack's BMX"          ,"bwyyoung@hotmail.com",0,"This is Jack's BMX","Equestrian",1,"James's horse riding","bwyyoung@hotmail.com",0,"This is James horse riding"];
+            list temp = llParseString2List(message, [" "], []); //check with space separations
+            
+            if (llList2String(temp, 0) == Sport) // we are displaying a sport and the user has chosen one
+            {
+                list temp2 = llParseString2List(message,[Delimiter],[]); 
+                integer TheClassIndex = llList2Integer(temp2,1);
+                DisplayClients(TheClassIndex,id);
+                
+            }
+            else if (llList2String(temp, 0) == "Sports")//back to sports
+            {
+                DisplayClasses(id);
+                
+            }
+            else if (llList2String(temp, 0) == Client)
+            {
+                list temp2 = llParseString2List(message,[Delimiter],[]); 
+                
+                integer TheClientIndex = llList2Integer(temp2, 1);
+                integer TheClassIndex = llList2Integer(temp2, 2);
+                DisplayClientData(TheClassIndex,TheClientIndex,id);
+            }
+            else if (llList2String(temp, 0) == OK)
+            {
+                list temp2 = llParseString2List(message,[Delimiter],[]); 
+                integer TheClassIndex = llList2Integer(temp2, 1);
+                integer TheClientIndex=llList2Integer(temp2, 2);
+                key AvatarKey = id;
+                integer cost = llList2Integer(temp2, 3);
+                
+                ApproveCourse( TheClassIndex,  TheClientIndex,  AvatarKey,  cost);
+                ShowResult( TheClassIndex,  TheClientIndex, cost,  AvatarKey);
+                
+            }
+            else if (llList2String(temp, 0) == Cancel)
+            {
+                list temp2 = llParseString2List(message,[Delimiter],[]); 
+                
+                integer TheClientIndex = llList2Integer(temp2, 1);
+                integer TheClassIndex = llList2Integer(temp2, 2);
+                DisplayClients(TheClassIndex,id);
+            }
+            
+            
+        }
+        
+        
+
+        
+    }
+    
+}

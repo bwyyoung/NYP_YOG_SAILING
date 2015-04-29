@@ -1,0 +1,49 @@
+//Sun Glow Script
+//By Brian Young/Daijo Zenovka
+
+// goes in root and children of sun for glow.
+
+string Boost_Glow = "Boost_Glow";
+string Delimiter = "%$%^";
+string Delimiter2 = "@T!ME";
+
+float sun_glow = 0.2;
+s
+default
+{
+    state_entry()
+    {
+
+    }
+
+    link_message(integer sender_num, integer num, string msg, key id)
+    {
+        list temp = llParseString2List(msg, [Delimiter],[] );
+        
+        if (llList2String(temp, 0) == Boost_Glow)
+        {
+            list temp2 =  llParseString2List(llList2String(temp, 1), [Delimiter2],[] );
+            integer i;
+            integer IsGlow = FALSE;
+            for (i = 0; i< llGetListLength(temp2); i++)
+            {
+                if ((string)llList2Integer(temp2,i) == llGetLinkName(llGetLinkNumber()))
+                {
+                    IsGlow =  TRUE;
+                }
+            }
+            
+            if (IsGlow)
+            {
+                llSetLinkPrimitiveParams(LINK_THIS, [25, ALL_SIDES, sun_glow]); 
+            }
+            else
+            {
+                llSetLinkPrimitiveParams(LINK_THIS, [25, ALL_SIDES, 0]);  
+            }
+        }
+        
+        
+    }
+
+}

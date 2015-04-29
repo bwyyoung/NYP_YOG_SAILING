@@ -1,0 +1,39 @@
+//Vinyl Disc Script
+//By Brian Young/Daijo Zenovka
+//located in root of vinyl disc
+//The vinyl disc spins when playing music, and can spin at specified rates.
+
+integer DISC_A = 0;
+string Delimiter = "%$%^";
+
+string Set_Disc_Speed = "Set_Disc_Speed";
+string Reset_Disc = "Reset_Disc";
+
+default
+{
+    state_entry()
+    {
+        llTargetOmega(ZERO_VECTOR, 0, 0);
+    }
+
+
+    link_message(integer sender_num, integer num, string msg, key id) 
+    {
+        if (num == DISC_A)
+        {
+            list temp = llParseString2List(msg, [Delimiter], []);
+            if (llList2String(temp, 0) == Set_Disc_Speed )
+            {
+                float TheSpeed = llList2Float(temp,1);
+                llTargetOmega(llRot2Up(llGetLocalRot()), TheSpeed, 1.0);
+            }
+            else if (llList2String(temp, 0) == Reset_Disc )
+            {
+                llTargetOmega(ZERO_VECTOR, 0, 0);
+                llResetScript();
+            }
+        }
+        
+        
+    }
+}

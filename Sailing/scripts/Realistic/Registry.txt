@@ -1,0 +1,390 @@
+//Registry  Script 
+//By Brian Young/Daijo Zenovka
+//Goes in root prim of Registry
+
+//Description: The registry communicates with the points and boat tracker about the race. It allows the player to choose a boat of their preference by opening a dialog box for the player. 
+
+integer point_Activater_handle;
+integer point_Reset_handle;
+integer Wacky_Handle;
+
+integer point_Listener = -300;
+integer point_Activater = -301;
+integer point_Reset = -302;
+integer Registry = -304;
+integer Boat_Channel = -306;
+integer Wacky_Channel = -309;
+integer Dialog_Channel = 311;
+
+
+string Activate_Points = "Activate_Points";
+string Reset_Points = "Reset_Points";
+string Open_Points =  "Open_Points";
+string Enable_Wacky = "Enable_Wacky";
+string New_Player = "New_Player";
+string Clear_Display_Boat = "Clear_Display_Boat";
+string Set_Display_Boat_Name = "Set_Display_Boat_Name";
+string Set_Name = "Set_Name";
+
+string Unlock_Boats = "Unlock_Boats";
+integer touch_times = 0;
+
+string Delimiter = "%$%^";
+
+string Delimiter2 = "@T!ME";
+
+string RealisticBoat  = "Laser";
+string WackyBoat = "Laser Wacky";
+string DisplayName  = "Display";
+
+integer Registry_Active = FALSE;
+
+integer Wacky_Mode = FALSE;
+
+integer Race_Begin  = FALSE;
+integer NumRez = 0;
+
+list Registrants;
+list Selected;
+
+integer NumBoats = 3;
+
+integer NumWackyBoats = 4;
+
+
+list Boats =   [4.0,-5.0,0.0,
+                4.0,2.0,0.0,
+                4.0,9.0,0.0];
+                
+list DisplayBoats=[-8.0,-6.0,0.0,
+                   -8.0,0.0,0.0,
+                   -8.0,6.0,0.0];
+                   
+list DisplayWackyBoats = [-8.0,-6.0,0.0,
+                          -8.0,-3.0,0.0,
+                          -8.0,0.0,0.0,
+                          -8.0,3.0,0.0];
+
+
+
+vector Teleport_destination;     //Enter the teleporter destination location here
+vector Original_position;// = <206,71,29>;         //Enter the Original Position of the teleporter here.
+
+key avatarKey;  //avatar key
+
+integer target_id;  //target ids for different targets
+integer target_id2;
+string CantTeleMessage = "Unable to teleport to the destination."; //If teleport location cannot be access.
+
+Detect()
+{
+    llWhisper(0,"Starting Registry...");
+    llSetStatus(STATUS_PHANTOM,TRUE); 
+    llSetTexture("gate_open",2); 
+    llSetTexture("gate_open",4); 
+    llVolumeDetect(TRUE);
+    llRegionSay(Registry, Activate_Points + Delimiter);
+    //llRegionSay(Wacky_Channel,Enable_Wacky + Delimiter + (string)Wacky_Mode );
+    Registry_Active = TRUE;
+    
+}
+
+Reset()
+{   
+    llWhisper(0,"Resetting Registry...");
+    llSetTimerEvent(0);
+    llVolumeDetect(FALSE);
+    llSetStatus(STATUS_PHANTOM,FALSE);
+    llSetTexture("gate_closed",2); 
+    llSetTexture("gate_closed",4); 
+    Registrants = [];
+    Selected = [];
+    Registry_Active = FALSE;
+    Race_Begin = FALSE;
+    NumRez = 0;
+    llRegionSay(Registry, Reset_Points + Delimiter);
+}
+
+list order_buttons(list buttons)
+{
+    return llList2List(buttons, -3, -1) + llList2List(buttons, -6, -4)
+         + llList2List(buttons, -9, -7) + llList2List(buttons, -12, -10);
+}
+
+default
+{
+    state_entry()
+    {
+        
+       llRegionSay(Registry, Clear_Display_Boat);
+       
+       point_Activater_handle = llListen(point_Activater, "", NULL_KEY, "");
+       point_Reset_handle = llListen(point_Reset, "", NULL_KEY, ""); 
+
+       Wacky_Handle = llListen(Wacky_Channel,"", NULL_KEY, "");
+       
+       llListen (Registry, "", NULL_KEY, ""); 
+       llListen (Dialog_Channel, "", NULL_KEY, ""); 
+       NumRez = 0;
+       Reset();
+    }
+
+    collision_start(integer num)
+    {
+        integer x;
+        integer FoundIndex;
+
+        list Selections;
+        integer i = 0;
+        integer j = 0;
+        integer NumCurBoats;
+        
+        if (!Wacky_Mode)
+            NumCurBoats = NumBoats;
+        else
+            NumCurBoats = NumWackyBoats;        
+        
+        string CurrentBoat;        
+        if(!Wacky_Mode)
+        {
+            CurrentBoat = RealisticBoat;
+        }
+        else
+        {
+            CurrentBoat = WackyBoat;
+        }
+        if(Registry_Active == TRUE)
+        {   
+            do
+            {
+                FoundIndex = llListFindList(Registrants, [llDetectedKey(i)]);
+                
+                list TheBoat = llParseString2List(CurrentBoat,[" "],[]);
+                for (j = 1; j <=  NumCurBoats; j++)
+                {
+                    Selections+= [llList2String(TheBoat,0) + " " + (string)j ];
+                }
+                if (FoundIndex == -1)
+                {
+                    Registrants+=[llDetectedKey(i)];
+                    Selected+=[FALSE];
+                    
+                    
+                    llDialog(llDetectedKey(i),"\nPlease Select a Boat\n",Selections,Dialog_Channel);
+
+                    llRegionSay(Registry,New_Player + Delimiter + (string)llDetectedKey(i));
+ 
+                }
+                else // we found the player in the list
+                {
+                
+                    if (llList2Integer(Selected,FoundIndex) == FALSE)
+                    {
+                        
+                        llDialog(llList2Key(Registrants,FoundIndex),"\nPlease Select a Boat\n",Selections,Dialog_Channel);
+                    }
+                    else
+                        llWhisper(0, (string)llKey2Name(llList2Key(Registrants,FoundIndex)) + " " + "has already selected a boat.");
+                }
+                
+            }
+            while(num > ++i);         
+        }
+        else
+        {
+            do
+            {
+                FoundIndex = llListFindList(Registrants, [llDetectedKey(i)]);
+
+                if (FoundIndex != -1)
+                {
+                    for (j = 1; j <=  NumCurBoats; j++)
+                    {
+                        Selections+= [CurrentBoat + " " + (string)j ];
+                    }
+                    if (llList2Integer(Selected,FoundIndex) == FALSE)
+                    {
+                        llDialog(llList2Key(Registrants,FoundIndex),"\nPlease Select a Boat\n",Selections,Dialog_Channel);
+                    }
+                    else
+                        llWhisper(0, (string)llKey2Name(llList2Key(Registrants,FoundIndex)) + " " + "has already selected a boat.");
+                }
+                
+            }
+            while(num > ++i);
+            
+            if (FoundIndex == -1)
+            {
+                llWhisper(0, "You are not a registrant. Please move back.");
+                llSleep(1.0);
+            }
+        }
+
+    }
+    touch_start(integer num)
+    {
+        if (llDetectedKey(0) == llGetOwner())
+        {
+            if(touch_times%2 == 0)
+                Detect();
+            else
+                Reset();
+           touch_times+=1;
+        }
+    }
+    
+    listen( integer channel, string name, key id, string message )
+    {
+        integer NumCurBoats;
+        if (!Wacky_Mode)
+            NumCurBoats = NumBoats;
+        else
+            NumCurBoats = NumWackyBoats;
+        if (channel == Registry)
+        {
+            if (message == Reset_Points)
+            {
+                Reset();
+                touch_times+=1;
+            }   
+        }
+        else if (channel == Wacky_Channel)
+        {
+            list temp = llParseString2List(message, [Delimiter], []);
+            if (llList2String(temp, 0) == Enable_Wacky)
+            {
+               Wacky_Mode = llList2Integer(temp, 1);
+               llRegionSay(Registry, Clear_Display_Boat);
+               integer i;
+               if (Wacky_Mode)
+               for (i = 1; i <= NumWackyBoats; i++)
+               {
+                   integer CurrentIndex = (i-1)*3;
+                   Teleport_destination.x = llList2Float(DisplayWackyBoats, CurrentIndex +0);
+                   Teleport_destination.y = llList2Float(DisplayWackyBoats, CurrentIndex +1);
+                   Teleport_destination.z = llList2Float(DisplayWackyBoats, CurrentIndex +2);
+                   llRezObject(WackyBoat + " " + DisplayName  + " " + (string)i,llGetPos() + Teleport_destination, <0.0,0.0,0.0>, llEuler2Rot(<0.0,0.0,45.0>*DEG_TO_RAD), 0);
+                    
+                   llSleep(1.0);
+                   llRegionSay(Registry,  Set_Display_Boat_Name + Delimiter + WackyBoat+" " + (string)i +  Delimiter2 +"(" +DisplayName + ")");
+               }
+               else
+               for (i = 1; i <= NumBoats; i++)
+               {
+                   integer CurrentIndex = (i-1)*3;
+                   Teleport_destination.x = llList2Float(DisplayBoats, CurrentIndex +0);
+                   Teleport_destination.y = llList2Float(DisplayBoats, CurrentIndex +1);
+                   Teleport_destination.z = llList2Float(DisplayBoats, CurrentIndex +2);
+                   llRezObject(RealisticBoat+ " " + DisplayName  + " " + (string)i,llGetPos() + Teleport_destination, <0.0,0.0,0.0>, llEuler2Rot(<0.0,0.0,45.0>*DEG_TO_RAD), 0);
+                   llSleep(1.0);
+                   llRegionSay(Registry,  Set_Display_Boat_Name + Delimiter + RealisticBoat+" " + (string)i +  Delimiter2 +"(" +DisplayName + ")");
+                   
+               }
+            }
+                
+        }
+        else if (channel == point_Activater)
+        {
+            if (message == Open_Points)
+            {
+                llVolumeDetect(FALSE);
+                llSetStatus(STATUS_PHANTOM,FALSE);
+                llSetTexture("gate_closed",2); 
+                llSetTexture("gate_closed",4); 
+                Registry_Active = FALSE;
+                Race_Begin = TRUE;
+                llRegionSay(Boat_Channel, Unlock_Boats + Delimiter + (string)TRUE);
+            }   
+            
+        }
+        else if (channel == Dialog_Channel)
+        {
+            //the id here is the avatar himself!
+            integer FoundIndex = llListFindList(Registrants, [id]);
+            
+            if (FoundIndex != -1)//if the guy already exists as a player
+            {
+
+                if (llList2Integer(Selected,FoundIndex) == FALSE)
+                {
+                    
+                    Selected = llListReplaceList(Selected, [TRUE],FoundIndex,FoundIndex);  
+                    //Here we give out the boat
+                    
+                    if (NumRez<NumCurBoats)
+                    {
+
+                        avatarKey = id;
+                        integer CurrentIndex = NumRez*3;
+                        Teleport_destination.x = llList2Float(Boats, CurrentIndex +0);
+                        Teleport_destination.y = llList2Float(Boats, CurrentIndex +1);
+                        Teleport_destination.z = llList2Float(Boats, CurrentIndex +2);
+                        
+                        list BoatData = llParseString2List(message, [" "], []);
+                        
+                        string CurrentBoat;        
+                        if(!Wacky_Mode)
+                        {
+                            CurrentBoat = RealisticBoat;
+                        }
+                        else
+                        {
+                            CurrentBoat = WackyBoat;
+                        }   
+                        if(!Wacky_Mode)
+                        {
+                            llRezObject(CurrentBoat+" "+llList2String(BoatData,1),llGetPos() + Teleport_destination, <0.0,0.0,0.0>, llEuler2Rot(<0.0,0.0,90.0>*DEG_TO_RAD), 0);
+                        }
+                        else
+                        {
+                            llRezObject(CurrentBoat+" "+llList2String(BoatData,1),llGetPos() + Teleport_destination, <0.0,0.0,0.0>, llEuler2Rot(<0.0,0.0,90.0>*DEG_TO_RAD), 0);   
+                        }
+                        
+                        list CurName =  llParseString2List(llKey2Name(avatarKey), [" "], []);
+                        string SentName = Set_Name + Delimiter;
+                        integer i;
+                           
+                        for (i = 0; i < llGetListLength(CurName); i++ )
+                        {
+                            SentName+= Delimiter2;
+                            SentName +=llList2String(CurName, i);
+                        }
+                        llSleep(0.5);
+                        llRegionSay(Boat_Channel,SentName);
+                        NumRez++;
+                        llSleep(2.0);
+
+                    }
+                    else
+                    {/// turn off the registry so that no other players can join. the house is full.
+                        llVolumeDetect(FALSE);
+                        llSetStatus(STATUS_PHANTOM,FALSE);
+                        llSetTexture("gate_closed",2); 
+                        llSetTexture("gate_closed",4); 
+                        Registry_Active = FALSE;
+                    }
+                    
+                    
+                    if (Race_Begin)
+                    { 
+                        llSleep(0.5);
+                        llRegionSay(Boat_Channel, Unlock_Boats + Delimiter + (string)TRUE);   
+                    }
+                }
+                else
+                {
+                    llWhisper(0,llKey2Name(id) + " " + "has already selected a boat.");
+                }
+                   
+            }
+ 
+            
+        }
+    }    
+    timer()
+    {
+        llSetTimerEvent(0.0);
+        llInstantMessage( avatarKey, CantTeleMessage );
+        llUnSit(avatarKey);
+    }
+}

@@ -1,0 +1,108 @@
+
+//reused math variables
+vector eulerRot;
+vector currEuler;
+rotation quatRot; 
+rotation currRot;
+vector fwdVec;
+vector upVec;
+vector leftVec;
+
+float seaLevel;
+
+//heeling variables
+float heelAngle;
+float heelTorque;
+float heelAdd;
+
+integer NAME_MODULE = 6;
+
+integer Registry = -304;
+
+string Clear_Display_Boat = "Clear_Display_Boat";
+string Set_Display_Boat_Name = "Set_Display_Boat_Name";
+
+string DefaultName = "Laser Display 1";
+
+string Delimiter = "%$%^";
+
+string Delimiter2 = "@T!ME";
+
+//figure out where to put boat when it is rezzed
+setInitialPosition() 
+{
+    vector pos=llGetPos();
+    float groundHeight=llGround(ZERO_VECTOR);
+    float waterHeight = llWater(ZERO_VECTOR);
+    seaLevel=llWater(ZERO_VECTOR);
+    upright();
+
+    //if over water, set boat height to sealevel + 0.12m;
+    if (groundHeight <= waterHeight) 
+    {
+        pos.z = waterHeight + 0.12;
+        while (llVecDist(llGetPos(),pos)>.001) 
+            llSetPos(pos);
+    }
+}
+
+//force boat upright
+upright() {
+    currRot=llGetRot();
+    currEuler=llRot2Euler(currRot);
+    leftVec=llRot2Left(currRot);
+    heelAngle=llAsin(leftVec.z);
+    eulerRot=<-heelAngle,0,0>;
+    quatRot=llEuler2Rot(eulerRot);
+    llRotLookAt(quatRot*currRot,0.2,0.2);
+}
+
+default
+{
+
+    state_entry()
+    {
+        llListen (Registry, "", NULL_KEY, "");
+        llSetStatus(STATUS_ROTATE_X | STATUS_ROTATE_Z | STATUS_ROTATE_Y,TRUE);
+        llSetStatus(STATUS_PHYSICS,FALSE);
+        llSetStatus(STATUS_PHANTOM,FALSE);
+        llSetStatus(STATUS_BLOCK_GRAB,TRUE);
+        setInitialPosition();
+
+    }
+    
+    on_rez(integer param) {
+        //reset();
+        llResetScript();
+    }
+    
+    listen( integer channel, string name, key id, string message )
+    {
+        list temp = llParseString2List(message, [Delimiter], []);
+        if (channel == Registry)
+        {
+            if (message == Clear_Display_Boat)
+            {
+                llDie();   
+            }
+            else if (llList2String(temp,0) == Set_Display_Boat_Name)
+            {
+                if (llGetObjectName() == DefaultName)
+                {
+                    list temp2 = llParseString2List(llList2String(temp, 1), [Delimiter2], []);
+                    integer i;
+                    string newname;
+                    for (i = 0; i< llGetListLength(temp2); i++)
+                    {
+                        newname+=llList2String(temp2, i);
+                        if (i + 1 !=llGetListLength(temp2))
+                            newname+=" ";
+                    }
+                    llSetObjectName(newname);
+                    llMessageLinked(LINK_THIS, NAME_MODULE,message, NULL_KEY);  
+                }
+            }
+            
+        }
+    }
+}

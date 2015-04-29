@@ -1,0 +1,242 @@
+//Sail Holder Laser(Wacky) Script
+//By Brian Young/Daijo Zenovka
+//Belongs to primitive 'SailHolder' of Child of Boat
+
+//with references to the Flying Tako Sailboat Script
+
+//It rotates the cylinder beneath the sail on a sailboat. It is located in the sailholder primitive.
+
+
+string boatName="Laser ";
+string versionNumber="1.0";
+
+//script module flags
+integer CONTROLS_MODULE=1;
+integer SAIL_MODULE=2;
+integer MOTOR_MODULE=3;
+integer COLORIZER_MODULE=4;
+
+//environment
+vector wind;
+float windAngle;
+float absWindAngle;
+float depth;
+float seaLevel;
+
+//reused math variables
+vector eulerRot;
+vector currEuler;
+rotation quatRot;
+rotation currRot;
+
+//boat variables
+float zRotAngle;
+vector fwdVec;
+vector upVec;
+vector leftVec;
+float compass;
+
+//heeling variables
+float heelAngle;
+float heelTorque;
+float heelAdd;
+
+//linear motion variables
+float currSpeed;
+vector groundSpeed=ZERO_VECTOR;
+float spdFactor=0.0;
+float leeway;
+
+//angular motion variables
+float rotSpeed;
+float rotDelta;
+vector eulerTurnLeft;
+vector eulerTurnRight;
+rotation quatTurnLeft=ZERO_ROTATION;
+rotation quatTurnRight=ZERO_ROTATION;
+
+//sail variables
+integer boomAngle;
+integer currBoomAngle=0;
+integer delta;
+integer incr;
+float optBoomAngle;
+float trimFactor;
+
+//performance constants
+float timerFreq=1.5;        //timer frequency, seconds
+float maxSpeed=10.0;        //maximum allowed speed
+integer sheetAngle=5;       //initial sheet angle setting
+integer ironsAngle=35;      //this is as close as the boat can sail to the wind
+float slowingFactor=0.7;    //speed drops by this factor every timerFreq seconds if sailing into the wind
+float leewayTweak=0.5;      //scales leeway (0=no leeway)
+float speedTweak=1.0;       //scales speed
+float rotTweak=5.0;         //scales boat turning rate
+float heelTweak=0.5;        //scales amount of heeling
+float maxWindSpeed=20.0;    //used for heeling calculation
+float windDir;              //we can set this in the practice version
+float windSpeed;            //we can set this in the practice version
+
+//motor settings
+integer fromMotoring=FALSE;
+float maxSpeedMotor=10.0;
+float throttle=0;
+
+//miscellaneous
+string dataString;
+key owner;//boat owner
+key avatar;//person sitting at the helm
+key kanker="7abbf31e-d601-4521-ae52-f7457d6e0012";
+integer ownerVersion=TRUE;
+integer SAIL_UP=FALSE;
+integer permSet=FALSE;
+integer HUD_ON=TRUE;
+string idStr;
+integer numTouches=0;
+integer sailing=TRUE;
+integer motoring=FALSE;
+float mpsToKts=1.944;
+float convert=1;
+string units=" m/s";
+integer showKnots=FALSE;
+float time;
+float offset;
+float theta;
+
+//linked parts
+integer BOW;
+integer HULL;
+integer STERN;
+integer SAIL;
+integer WINDVANE;
+integer SAILHOLDER;
+integer PORTBENCH;
+integer STARBOARDBENCH;
+integer RUDDER;
+integer TILLER;
+integer CENTERBOARD;
+integer FLOOR;
+integer MAST;
+integer TRANSOM;
+integer REARFLOOR;
+integer HUD;
+integer NUMBER1;
+integer NUMBER2;
+integer PROP;
+
+
+//automatically detect link nums for each named part
+getLinkNums() {
+    integer i;
+    integer linkcount=llGetNumberOfPrims();  
+    for (i=1;i<=linkcount;++i) {
+        string str=llGetLinkName(i);
+        if (str=="bow") BOW=i;
+        if (str=="hull") HULL=i;
+        if (str=="stern") STERN=i;
+        if (str=="sail") SAIL=i;
+        if (str=="mast") MAST=i;
+        if (str=="windindicator") WINDVANE=i;
+        if (str=="floor") FLOOR=i;
+        if (str=="transom") TRANSOM=i;
+        if (str=="tiller") TILLER=i;
+        if (str=="rudder") RUDDER=i;
+        if (str=="centerboard") CENTERBOARD=i;
+        if (str=="starboardbench") STARBOARDBENCH=i;
+        if (str=="portbench") PORTBENCH=i;
+        if (str=="rearfloor") REARFLOOR=i;
+        if (str=="hud") HUD=i;
+        if (str=="number1") NUMBER1=i;
+        if (str=="number2") NUMBER2=i;
+        if (str=="prop") PROP=i;  
+        if (str=="sailholder") SAILHOLDER = i;        
+    }
+}
+
+//raise sail: start timer
+raiseSail() {      
+    SAIL_UP=TRUE;
+    raise();
+    
+} 
+
+//lower sail but leave physics on
+lowerSail() {
+    currBoomAngle=0;
+    sheetAngle=5;
+    SAIL_UP=FALSE; 
+    lower();
+}
+rotation childRot;
+rotation initRot;
+
+integer i;
+
+integer foundFurled;
+integer foundRaisedRight;
+integer foundRaisedLeft;
+
+lower() {
+    llSetLocalRot(initRot);
+}
+
+raise () {
+}
+
+reset() {
+    llSetLocalRot(initRot);    
+    llSetAlpha(1.0,ALL_SIDES);
+}
+
+default {
+    
+    state_entry() {
+    
+        getLinkNums();
+        
+        llSetObjectName("sailholder");
+        initRot=llEuler2Rot(<0,PI_BY_TWO,0>);
+        //initRot=llEuler2Rot(<0,0,PI_BY_TWO);
+        llSetLocalRot(initRot);
+
+    }
+    
+    on_rez(integer param) {
+        llAllowInventoryDrop(TRUE);
+    }
+    
+
+    link_message(integer from,integer to,string msg,key id) {
+        if (from==LINK_ROOT && to==SAIL_MODULE) 
+        {
+            if (msg=="reset") {//reset
+                lowerSail();
+                reset();
+                llResetScript();
+            }
+            else if (msg=="lower") {//lower without reset
+                lowerSail();
+            }
+             else if (msg=="raise")  {//raise sail
+                raiseSail();
+            }
+        }   
+        else if (from == SAIL&& to==SAIL_MODULE)
+        {
+           list temp = llParseString2List(msg, [" "], []);
+           rotation a;
+           
+           a.x = llList2Float(temp,0);
+           a.y = llList2Float(temp,1);
+           a.z = llList2Float(temp,2);
+           a.s = llList2Float(temp,3);
+           llSetLocalRot(a);
+            
+        }
+    }
+    
+    changed(integer change){
+        
+    }
+
+}
